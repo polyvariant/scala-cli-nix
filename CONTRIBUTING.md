@@ -11,13 +11,14 @@ Implemented in `scala-cli-nix.sh`. Requires `scala-cli`, `cs` (Coursier), `jq`, 
 1. `scala-cli export --json <inputs>` discovers the Scala version, source files, and direct+transitive dependencies.
 2. `scala-cli run --main-class-list <inputs>` discovers the main class.
 3. `cs fetch` downloads all transitive JARs for both the compiler (`scala3-compiler_3`) and library dependencies.
-4. For each JAR **and its corresponding POM**, `nix hash file --base64` computes a hash compatible with `builtins.fetchurl`.
+4. For each JAR **and its corresponding POM**, `nix hash file --base64` computes a hash compatible with `builtins.fetchurl`. Parent POMs are discovered by walking the `<parent>` chain in each POM and included in the lockfile.
 5. The output is `scala.lock.json`.
 
 #### Lockfile format (`scala.lock.json`)
 
 ```json
 {
+  "version": 1,
   "scalaVersion": "3.8.3",
   "mainClass": "Main",
   "depsHash": "<sha1 of sorted dep coordinates, for cheap staleness checks>",
@@ -33,7 +34,8 @@ Implemented in `scala-cli-nix.sh`. Requires `scala-cli`, `cs` (Coursier), `jq`, 
 }
 ```
 
-- `compiler` and `libraryDependencies` contain both JARs and POMs. POMs are required because Coursier needs them for offline resolution, even though they aren't on the runtime classpath.
+- `version` is checked at build time — `lib.nix` rejects lockfiles that don't match the supported version. This prevents confusing errors when the lockfile format changes.
+- `compiler` and `libraryDependencies` contain JARs, their POMs, and any parent POMs referenced by those POMs. Parent POMs are needed because Coursier resolves version inheritance from parent POMs during offline resolution (e.g., `jline-reader` inherits version numbers from `jline-parent`).
 - `sources` lists the source files relative to the project root, recorded so the wrapper can detect when they change.
 - `depsHash` is a SHA1 of the sorted `groupId:artifactId:version` coordinates — a cheap way to detect dependency changes without re-fetching.
 

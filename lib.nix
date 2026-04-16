@@ -1,9 +1,16 @@
 { scala-cli, openjdk, makeWrapper, runCommand, stdenv }:
 let
+  supportedVersion = 1;
+
   fetchDeps = lockFile:
     let
       json = builtins.fromJSON (builtins.readFile lockFile);
-    in {
+      lockVersion = json.version or null;
+      versionCheck =
+        if lockVersion != supportedVersion
+        then builtins.throw "scala-cli-nix: unsupported lockfile version ${builtins.toString lockVersion} (expected ${builtins.toString supportedVersion}). Re-run 'scala-cli-nix lock' to regenerate."
+        else true;
+    in assert versionCheck; {
       inherit json;
       # Each builtins.fetchurl is its own FOD — per-artifact granularity
       compiler = builtins.map (dep: { inherit dep; path = builtins.fetchurl dep; }) json.compiler;

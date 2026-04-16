@@ -74,24 +74,50 @@ lock() {
   info "Libraries: ${bold}${lib_count}${reset} artifacts (transitive)"
 
   step "Hashing artifacts..."
-  path_to_entries() {
+  path_to_entry() {
     local path="$1"
     local relative="${path#"$cache_dir"/}"
-    local url
     local proto="${relative%%/*}"
     local rest="${relative#*/}"
-    url="${proto}://${rest}"
+    local url="${proto}://${rest}"
     local sha256
     sha256=$(nix hash file --base64 "$path")
     printf '{"url":"%s","sha256":"%s"}' "$url" "$sha256"
+  }
+
+  path_to_entries() {
+    local path="$1"
+    path_to_entry "$path"
 
     local pom_path="${path%.jar}.pom"
     if [ -f "$pom_path" ]; then
-      local pom_url="${url%.jar}.pom"
-      local pom_sha256
-      pom_sha256=$(nix hash file --base64 "$pom_path")
-      printf ',{"url":"%s","sha256":"%s"}' "$pom_url" "$pom_sha256"
+      printf ','
+      path_to_entry "$pom_path"
     fi
+  }
+
+  # Walk the parent POM chain for a given POM file, emitting JSON entries
+  # for each parent POM found in the Coursier cache.
+  collect_parent_poms() {
+    local pom_path="$1"
+    while [ -f "$pom_path" ]; do
+      local parent_group parent_artifact parent_version
+      parent_group=$(sed -n '/<parent>/,/<\/parent>/s/.*<groupId>\(.*\)<\/groupId>.*/\1/p' "$pom_path" | head -1)
+      parent_artifact=$(sed -n '/<parent>/,/<\/parent>/s/.*<artifactId>\(.*\)<\/artifactId>.*/\1/p' "$pom_path" | head -1)
+      parent_version=$(sed -n '/<parent>/,/<\/parent>/s/.*<version>\(.*\)<\/version>.*/\1/p' "$pom_path" | head -1)
+
+      [ -z "$parent_group" ] && break
+
+      local parent_dir="${parent_group//.//}"
+      local parent_pom_path="$cache_dir/https/repo1.maven.org/maven2/${parent_dir}/${parent_artifact}/${parent_version}/${parent_artifact}-${parent_version}.pom"
+
+      [ ! -f "$parent_pom_path" ] && break
+
+      printf ','
+      path_to_entry "$parent_pom_path"
+
+      pom_path="$parent_pom_path"
+    done
   }
 
   compiler_entries=""
@@ -102,6 +128,12 @@ lock() {
       compiler_entries="$entries"
     else
       compiler_entries="$compiler_entries,$entries"
+    fi
+    # Collect parent POMs for the POM adjacent to this JAR
+    local pom_path="${path%.jar}.pom"
+    if [ -f "$pom_path" ]; then
+      parent_entries=$(collect_parent_poms "$pom_path")
+      compiler_entries="$compiler_entries$parent_entries"
     fi
   done <<< "$compiler_paths"
 
@@ -114,6 +146,12 @@ lock() {
     else
       lib_entries="$lib_entries,$entries"
     fi
+    # Collect parent POMs for the POM adjacent to this JAR
+    local pom_path="${path%.jar}.pom"
+    if [ -f "$pom_path" ]; then
+      parent_entries=$(collect_parent_poms "$pom_path")
+      lib_entries="$lib_entries$parent_entries"
+    fi
   done <<< "$lib_paths"
 
   # Compute a hash of dep coordinates for cheap staleness checks
@@ -121,13 +159,14 @@ lock() {
 
   step "Writing lockfile..."
   jq -n \
+    --argjson version 1 \
     --arg scalaVersion "$scala_version" \
     --arg mainClass "$main_class" \
     --arg depsHash "$deps_hash" \
     --argjson sources "$sources_json" \
     --argjson compiler "[$compiler_entries]" \
     --argjson libraryDependencies "[$lib_entries]" \
-    '{scalaVersion: $scalaVersion, mainClass: $mainClass, depsHash: $depsHash, sources: $sources, compiler: $compiler, libraryDependencies: $libraryDependencies}' \
+    '{version: $version, scalaVersion: $scalaVersion, mainClass: $mainClass, depsHash: $depsHash, sources: $sources, compiler: $compiler, libraryDependencies: $libraryDependencies}' \
     > scala.lock.json
   success "Wrote ${bold}scala.lock.json${reset}"
 }
