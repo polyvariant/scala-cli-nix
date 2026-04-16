@@ -211,6 +211,7 @@ DERIVATION_EOF
     echo -e "  ${bold}1.${reset} Add the input:"
     echo ""
     echo -e "    ${dim}scala-cli-nix.url = \"github:scala-nix/scala-cli-nix\";${reset}"
+    echo -e "    ${dim}scala-cli-nix.inputs.nixpkgs.follows = \"nixpkgs\";${reset}"
     echo ""
     echo -e "  ${bold}2.${reset} Apply the overlay to nixpkgs:"
     echo ""
