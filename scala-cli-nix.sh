@@ -58,13 +58,26 @@ lock() {
   cache_dir=$(cs about 2>&1 | grep "Cache location:" | sed 's/.*Cache location: *//')
   info "Cache: ${dim}${cache_dir}${reset}"
 
+  # Determine compiler and library artifact names based on Scala major version
+  scala_major="${scala_version%%.*}"
+  if [ "$scala_major" = "3" ]; then
+    compiler_artifact="org.scala-lang:scala3-compiler_3:${scala_version}"
+    library_artifact="org.scala-lang:scala3-library_3:${scala_version}"
+  elif [ "$scala_major" = "2" ]; then
+    compiler_artifact="org.scala-lang:scala-compiler:${scala_version}"
+    library_artifact="org.scala-lang:scala-library:${scala_version}"
+  else
+    error "Unsupported Scala major version: ${scala_major} (from ${scala_version}). Only Scala 2.x and 3.x are supported."
+    exit 1
+  fi
+
   step "Fetching compiler dependencies..."
-  compiler_paths=$(cs fetch "org.scala-lang:scala3-compiler_3:${scala_version}" 2>/dev/null)
+  compiler_paths=$(cs fetch "$compiler_artifact" 2>/dev/null)
   compiler_count=$(echo "$compiler_paths" | grep -c . || true)
   info "Compiler: ${bold}${compiler_count}${reset} artifacts"
 
   step "Fetching library dependencies..."
-  lib_args=("org.scala-lang:scala3-library_3:${scala_version}")
+  lib_args=("$library_artifact")
   while IFS= read -r dep; do
     [ -n "$dep" ] && lib_args+=("$dep")
   done <<< "$deps"
@@ -85,12 +98,35 @@ lock() {
     printf '{"url":"%s","sha256":"%s"}' "$url" "$sha256"
   }
 
+  # Given a JAR path, find its corresponding POM.
+  # Handles classifier JARs (e.g. jline-3.29.0-jdk8.jar -> jline-3.29.0.pom)
+  find_pom_for_jar() {
+    local jar_path="$1"
+    # Try direct replacement first (works for non-classifier JARs)
+    local pom_path="${jar_path%.jar}.pom"
+    if [ -f "$pom_path" ]; then
+      echo "$pom_path"
+      return
+    fi
+    # For classifier JARs: derive base POM from directory structure
+    # Path format: .../artifactId/version/artifactId-version-classifier.jar
+    local dir version artifact
+    dir=$(dirname "$jar_path")
+    version=$(basename "$dir")
+    artifact=$(basename "$(dirname "$dir")")
+    local base_pom="${dir}/${artifact}-${version}.pom"
+    if [ -f "$base_pom" ]; then
+      echo "$base_pom"
+    fi
+  }
+
   path_to_entries() {
     local path="$1"
     path_to_entry "$path"
 
-    local pom_path="${path%.jar}.pom"
-    if [ -f "$pom_path" ]; then
+    local pom_path
+    pom_path=$(find_pom_for_jar "$path")
+    if [ -n "$pom_path" ]; then
       printf ','
       path_to_entry "$pom_path"
     fi
@@ -130,8 +166,9 @@ lock() {
       compiler_entries="$compiler_entries,$entries"
     fi
     # Collect parent POMs for the POM adjacent to this JAR
-    local pom_path="${path%.jar}.pom"
-    if [ -f "$pom_path" ]; then
+    local pom_path
+    pom_path=$(find_pom_for_jar "$path")
+    if [ -n "$pom_path" ]; then
       parent_entries=$(collect_parent_poms "$pom_path")
       compiler_entries="$compiler_entries$parent_entries"
     fi
@@ -147,8 +184,9 @@ lock() {
       lib_entries="$lib_entries,$entries"
     fi
     # Collect parent POMs for the POM adjacent to this JAR
-    local pom_path="${path%.jar}.pom"
-    if [ -f "$pom_path" ]; then
+    local pom_path
+    pom_path=$(find_pom_for_jar "$path")
+    if [ -n "$pom_path" ]; then
       parent_entries=$(collect_parent_poms "$pom_path")
       lib_entries="$lib_entries$parent_entries"
     fi
