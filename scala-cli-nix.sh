@@ -83,8 +83,8 @@ lock() {
   done <<< "$lib_paths"
 
   # 7. Write lock file
-  echo "{\"scalaVersion\":\"$scala_version\",\"mainClass\":\"$main_class\",\"compiler\":[$compiler_entries],\"libraryDependencies\":[$lib_entries]}" | jq . > scala-cli-nix-lock.json
-  echo "Wrote scala-cli-nix-lock.json"
+  echo "{\"scalaVersion\":\"$scala_version\",\"mainClass\":\"$main_class\",\"compiler\":[$compiler_entries],\"libraryDependencies\":[$lib_entries]}" | jq . > scala.lock.json
+  echo "Wrote scala.lock.json"
 }
 
 init() {
@@ -112,7 +112,7 @@ scala-cli-nix.buildScalaCliApp {
   pname = "@PNAME@";
   version = "0.1.0";
   src = ./.;
-  lockFile = ./scala-cli-nix-lock.json;
+  lockFile = ./scala.lock.json;
 }
 DERIVATION_EOF
   sed -i '' "s/@PNAME@/$pname/" derivation.nix
