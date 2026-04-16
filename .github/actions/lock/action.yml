@@ -1,0 +1,50 @@
+name: scala-cli-nix lock
+description: >
+  Regenerate scala.lock.json using scala-cli-nix and commit it if changed.
+  Requires a GitHub token with write access to the repository contents.
+
+inputs:
+  working-directory:
+    description: Directory containing the Scala project (where scala.lock.json lives)
+    required: false
+    default: .
+  commit-message:
+    description: Commit message used when the lockfile is updated
+    required: false
+    default: "chore: regenerate scala.lock.json"
+  token:
+    description: GitHub token with write access (used to push the updated lockfile)
+    required: false
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - name: Install Nix
+      uses: DeterminateSystems/nix-installer-action@main
+
+    - name: Regenerate lockfile
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        nix run github:scala-nix/scala-cli-nix -- lock
+
+    - name: Commit lockfile if changed
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        if git diff --quiet scala.lock.json; then
+          echo "scala.lock.json is up to date, nothing to commit."
+          exit 0
+        fi
+
+        git config user.name  "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        git add scala.lock.json
+        git commit -m "${{ inputs.commit-message }}"
+
+        # Push to the PR branch. On pull_request events the ref is
+        # refs/pull/<N>/merge; the actual branch is in GITHUB_HEAD_REF.
+        git push origin "HEAD:${GITHUB_HEAD_REF}"

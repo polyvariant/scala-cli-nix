@@ -61,6 +61,51 @@ Then rebuild with `nix build`.
    - `scala-cli --power package --library --offline --server=false` compiles user code
    - `makeWrapper` creates an executable referencing individual Nix store JARs on the classpath
 
+## GitHub Actions
+
+scala-cli-nix ships a reusable composite action that regenerates `scala.lock.json` on every pull request and commits the result if anything changed.
+
+Create `.github/workflows/lock.yml` in your repo:
+
+```yaml
+name: Update lockfile
+
+on:
+  pull_request:
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to push the updated lockfile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}   # check out the PR branch, not the merge commit
+
+      - uses: scala-nix/scala-cli-nix/.github/actions/lock@main
+```
+
+On every PR this will install Nix, run `scala-cli-nix lock` (which includes `scala-cli`, `coursier`, `jq`, and `nix` — nothing extra to install), and commit `scala.lock.json` back to the PR branch if it changed.
+
+### Options
+
+| Input | Default | Description |
+|---|---|---|
+| `working-directory` | `.` | Directory containing the Scala project |
+| `commit-message` | `chore: regenerate scala.lock.json` | Commit message when the lockfile is updated |
+| `token` | `github.token` | Token used to push — the default works for same-repo PRs |
+
+Example with a non-root project:
+
+```yaml
+      - uses: scala-nix/scala-cli-nix/.github/actions/lock@main
+        with:
+          working-directory: my-app
+```
+
+> **Fork PRs:** the default `github.token` is read-only for PRs from forks, so the push step will be skipped. Contributors from forks need to regenerate the lockfile locally with `nix run github:scala-nix/scala-cli-nix -- lock` and push it themselves.
+
 ## License
 
 Licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
