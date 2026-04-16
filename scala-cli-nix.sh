@@ -88,11 +88,6 @@ lock() {
 }
 
 init() {
-  if [ -f "flake.nix" ]; then
-    echo "flake.nix already exists, aborting." >&2
-    exit 1
-  fi
-
   # Check there are scala files
   if ! ls ./*.scala >/dev/null 2>&1 && ! ls ./**/*.scala >/dev/null 2>&1; then
     echo "No .scala files found in current directory." >&2
@@ -105,21 +100,44 @@ init() {
   echo "Initializing scala-cli-nix project: $pname"
 
   # Generate derivation.nix
-  cat > derivation.nix << 'DERIVATION_EOF'
+  if [ -f "derivation.nix" ]; then
+    echo "derivation.nix already exists, skipping."
+  else
+    cat > derivation.nix << DERIVATION_EOF
 { scala-cli-nix }:
 
 scala-cli-nix.buildScalaCliApp {
-  pname = "@PNAME@";
+  pname = "${pname}";
   version = "0.1.0";
   src = ./.;
   lockFile = ./scala.lock.json;
 }
 DERIVATION_EOF
-  sed -i '' "s/@PNAME@/$pname/" derivation.nix
-  echo "Wrote derivation.nix"
+    echo "Wrote derivation.nix"
+  fi
 
-  # Generate flake.nix
-  cat > flake.nix << 'FLAKE_EOF'
+  # Generate or advise on flake.nix
+  if [ -f "flake.nix" ]; then
+    echo ""
+    echo "flake.nix already exists. Add the following to your flake:"
+    echo ""
+    echo "  1. Add the input:"
+    echo ""
+    echo '    scala-cli-nix.url = "github:polyvariant/scala-cli-nix";'
+    echo ""
+    echo "  2. Add the package (in perSystem or equivalent):"
+    echo ""
+    echo '    packages.default = pkgs.callPackage ./derivation.nix {'
+    echo '      scala-cli-nix = pkgs.callPackage scala-cli-nix.lib { };'
+    echo '    };'
+    echo ""
+    echo "  3. Optionally, add scala-cli-nix to your devShell:"
+    echo ""
+    # shellcheck disable=SC2016
+    echo '    scala-cli-nix.packages.${system}.default'
+    echo ""
+  else
+    cat > flake.nix << 'FLAKE_EOF'
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
@@ -133,10 +151,9 @@ DERIVATION_EOF
       packages = forAllSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          scn = pkgs.callPackage scala-cli-nix.lib { };
         in {
           default = pkgs.callPackage ./derivation.nix {
-            scala-cli-nix = scn;
+            scala-cli-nix = pkgs.callPackage scala-cli-nix.lib { };
           };
         }
       );
@@ -156,7 +173,8 @@ DERIVATION_EOF
     };
 }
 FLAKE_EOF
-  echo "Wrote flake.nix"
+    echo "Wrote flake.nix"
+  fi
 
   # Generate lockfile
   lock
