@@ -9,7 +9,7 @@ Each JVM dependency is fetched as its own Fixed-Output Derivation via `builtins.
 In a directory with `.scala` files:
 
 ```bash
-nix run github:polyvariant/scala-cli-nix -- init
+nix run github:scala-nix/scala-cli-nix -- init
 ```
 
 This generates:
@@ -31,7 +31,7 @@ After changing `//> using dep` directives in your `.scala` files, regenerate the
 
 ```bash
 # From the devShell (nix develop), or directly:
-nix run github:polyvariant/scala-cli-nix -- lock
+nix run github:scala-nix/scala-cli-nix -- lock
 ```
 
 Then rebuild with `nix build`.

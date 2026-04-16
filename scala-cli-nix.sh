@@ -25,10 +25,10 @@ usage() {
 }
 
 lock() {
-  local inputs="."
+  local inputs=("${@:-.}")
 
   step "Exporting project info..."
-  export_json=$(scala-cli export --json "$inputs" 2>/dev/null)
+  export_json=$(scala-cli export --json "${inputs[@]}" 2>/dev/null)
 
   scala_version=$(echo "$export_json" | jq -r '.scalaVersion')
   info "Scala version: ${bold}${scala_version}${reset}"
@@ -109,14 +109,18 @@ lock() {
     fi
   done <<< "$lib_paths"
 
+  # Compute a hash of dep coordinates for cheap staleness checks
+  deps_hash=$(echo "$deps" | sort | shasum | cut -d' ' -f1)
+
   step "Writing lockfile..."
   jq -n \
     --arg scalaVersion "$scala_version" \
     --arg mainClass "$main_class" \
+    --arg depsHash "$deps_hash" \
     --argjson sources "$sources_json" \
     --argjson compiler "[$compiler_entries]" \
     --argjson libraryDependencies "[$lib_entries]" \
-    '{scalaVersion: $scalaVersion, mainClass: $mainClass, sources: $sources, compiler: $compiler, libraryDependencies: $libraryDependencies}' \
+    '{scalaVersion: $scalaVersion, mainClass: $mainClass, depsHash: $depsHash, sources: $sources, compiler: $compiler, libraryDependencies: $libraryDependencies}' \
     > scala.lock.json
   success "Wrote ${bold}scala.lock.json${reset}"
 }
@@ -158,7 +162,7 @@ DERIVATION_EOF
     echo ""
     echo -e "  ${bold}1.${reset} Add the input:"
     echo ""
-    echo -e "    ${dim}scala-cli-nix.url = \"github:polyvariant/scala-cli-nix\";${reset}"
+    echo -e "    ${dim}scala-cli-nix.url = \"github:scala-nix/scala-cli-nix\";${reset}"
     echo ""
     echo -e "  ${bold}2.${reset} Apply the overlay to nixpkgs:"
     echo ""
@@ -182,7 +186,7 @@ DERIVATION_EOF
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
-    scala-cli-nix.url = "github:polyvariant/scala-cli-nix";
+    scala-cli-nix.url = "github:scala-nix/scala-cli-nix";
   };
 
   outputs = { nixpkgs, scala-cli-nix, ... }:
