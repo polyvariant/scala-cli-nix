@@ -7,6 +7,15 @@ reset='\033[0m'
 
 LOCKFILE="scala.lock.json"
 
+# Known scala-cli subcommands — strip these from args before passing to export/lock
+SUBCOMMANDS="clean|compile|dependency-update|doc|fix|fmt|format|scalafmt|new|repl|console|package|publish|run|test|version|config|export|help|install|setup-ide|shebang|uninstall|update"
+
+# Extract input args by stripping the subcommand (if any) from $@
+input_args=("$@")
+if [[ ${#input_args[@]} -gt 0 && "${input_args[0]}" =~ ^($SUBCOMMANDS)$ ]]; then
+  input_args=("${input_args[@]:1}")
+fi
+
 needs_lock() {
   # No lockfile at all
   if [ ! -f "$LOCKFILE" ]; then
@@ -16,7 +25,7 @@ needs_lock() {
 
   # Get current state from scala-cli export
   local export_json
-  export_json=$(real-scala-cli export --json "$@" 2>/dev/null) || return 1
+  export_json=$(real-scala-cli export --json "${input_args[@]}" 2>/dev/null) || return 1
 
   # Hash the entire export JSON — any change in sources, scala version,
   # dependencies, repos, etc. will trigger a re-lock
@@ -34,8 +43,8 @@ needs_lock() {
 }
 
 # Check and regenerate lockfile if needed
-if needs_lock "$@"; then
-  scala-cli-nix lock "$@"
+if needs_lock; then
+  scala-cli-nix lock "${input_args[@]}"
   echo "" >&2
 fi
 
