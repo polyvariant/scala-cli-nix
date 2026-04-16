@@ -9,6 +9,10 @@
     in {
       lib = ./lib.nix;
 
+      overlays.default = final: prev: {
+        scala-cli-nix = final.callPackage self.lib { };
+      };
+
       packages = forAllSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
@@ -23,11 +27,11 @@
 
       checks = forAllSystems (system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
-          scn = pkgs.callPackage self.lib { };
-          example = pkgs.callPackage ./example/derivation.nix {
-            scala-cli-nix = scn;
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ self.overlays.default ];
           };
+          example = pkgs.callPackage ./example/derivation.nix { };
         in {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)
