@@ -24,11 +24,18 @@ usage() {
   exit 1
 }
 
+# Use real-scala-cli if available (avoids recursion with wrapper)
+if command -v real-scala-cli &>/dev/null; then
+  SCALA_CLI=real-scala-cli
+else
+  SCALA_CLI=scala-cli
+fi
+
 lock() {
   local inputs=("${@:-.}")
 
   step "Exporting project info..."
-  export_json=$(scala-cli export --json "${inputs[@]}" 2>/dev/null)
+  export_json=$($SCALA_CLI export --json "${inputs[@]}" 2>/dev/null)
 
   scala_version=$(echo "$export_json" | jq -r '.scalaVersion')
   info "Scala version: ${bold}${scala_version}${reset}"
@@ -44,7 +51,7 @@ lock() {
   info "Found ${bold}${dep_count}${reset} dependencies"
 
   step "Discovering main class..."
-  main_class=$(scala-cli run --main-class-list "$inputs" 2>/dev/null | head -1)
+  main_class=$($SCALA_CLI run --main-class-list "${inputs[@]}" 2>/dev/null | head -1)
   info "Main class: ${bold}${main_class}${reset}"
 
   step "Detecting Coursier cache..."
@@ -175,10 +182,10 @@ DERIVATION_EOF
     echo ""
     echo -e "    ${dim}packages.default = pkgs.callPackage ./derivation.nix { };${reset}"
     echo ""
-    echo -e "  ${bold}4.${reset} Optionally, add to your devShell:"
+    echo -e "  ${bold}4.${reset} Add to your devShell (uses wrapped scala-cli with auto-locking):"
     echo ""
-    # shellcheck disable=SC2016
-    echo -e "    ${dim}scala-cli-nix.packages.\${system}.default${reset}"
+    echo -e "    ${dim}pkgs.scala-cli${reset}"
+    echo -e "    ${dim}pkgs.scala-cli-nix-cli${reset}"
     echo ""
   else
     step "Writing flake.nix..."
@@ -206,12 +213,15 @@ DERIVATION_EOF
 
       devShells = forAllSystems (system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ scala-cli-nix.overlays.default ];
+          };
         in {
           default = pkgs.mkShell {
             buildInputs = [
-              scala-cli-nix.packages.${system}.default
               pkgs.scala-cli
+              pkgs.scala-cli-nix-cli
             ];
           };
         }
@@ -229,7 +239,7 @@ FLAKE_EOF
 }
 
 case "${1:-}" in
-  init) init ;;
-  lock) lock ;;
+  init) shift; init "$@" ;;
+  lock) shift; lock "$@" ;;
   *) usage ;;
 esac

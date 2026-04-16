@@ -25,9 +25,20 @@ nix build
 ./result/bin/<your-app-name>
 ```
 
-## Updating dependencies
+## Development workflow
 
-After changing `//> using dep` directives in your `.scala` files, regenerate the lockfile:
+The generated flake includes a devShell with a wrapped `scala-cli` that **automatically regenerates the lockfile** when sources, Scala version, or dependencies change:
+
+```bash
+nix develop
+scala-cli run .   # lockfile is checked/regenerated before every run
+```
+
+The wrapper detects staleness by comparing the current `scala-cli export --json` output against `scala.lock.json` — if anything differs, it runs `scala-cli-nix lock` before forwarding to the real scala-cli.
+
+## Updating dependencies manually
+
+After changing `//> using dep` directives in your `.scala` files, you can also regenerate the lockfile explicitly:
 
 ```bash
 # From the devShell (nix develop), or directly:

@@ -10,7 +10,26 @@
       lib = ./lib.nix;
 
       overlays.default = final: prev: {
-        scala-cli-nix = final.callPackage self.lib { };
+        scala-cli-nix = final.callPackage self.lib { scala-cli = prev.scala-cli; };
+
+        # The real scala-cli, accessible as real-scala-cli
+        real-scala-cli = final.writeShellScriptBin "real-scala-cli" ''
+          exec ${prev.scala-cli}/bin/scala-cli "$@"
+        '';
+
+        # scala-cli-nix CLI tool (init/lock)
+        scala-cli-nix-cli = final.writeShellApplication {
+          name = "scala-cli-nix";
+          runtimeInputs = [ final.real-scala-cli final.coursier final.jq final.nix ];
+          text = builtins.readFile ./scala-cli-nix.sh;
+        };
+
+        # Wrapped scala-cli that auto-locks before forwarding
+        scala-cli = final.writeShellApplication {
+          name = "scala-cli";
+          runtimeInputs = [ final.real-scala-cli final.scala-cli-nix-cli final.jq ];
+          text = builtins.readFile ./scala-cli-wrapper.sh;
+        };
       };
 
       packages = forAllSystems (system:
