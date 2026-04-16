@@ -154,19 +154,19 @@ lock() {
     fi
   done <<< "$lib_paths"
 
-  # Compute a hash of dep coordinates for cheap staleness checks
-  deps_hash=$(echo "$deps" | sort | shasum | cut -d' ' -f1)
+  # Compute a hash of the entire export JSON for staleness checks
+  export_hash=$(echo "$export_json" | jq -S '.' | shasum | cut -d' ' -f1)
 
   step "Writing lockfile..."
   jq -n \
-    --argjson version 1 \
+    --argjson version 2 \
     --arg scalaVersion "$scala_version" \
     --arg mainClass "$main_class" \
-    --arg depsHash "$deps_hash" \
+    --arg exportHash "$export_hash" \
     --argjson sources "$sources_json" \
     --argjson compiler "[$compiler_entries]" \
     --argjson libraryDependencies "[$lib_entries]" \
-    '{version: $version, scalaVersion: $scalaVersion, mainClass: $mainClass, depsHash: $depsHash, sources: $sources, compiler: $compiler, libraryDependencies: $libraryDependencies}' \
+    '{version: $version, scalaVersion: $scalaVersion, mainClass: $mainClass, exportHash: $exportHash, sources: $sources, compiler: $compiler, libraryDependencies: $libraryDependencies}' \
     > scala.lock.json
   success "Wrote ${bold}scala.lock.json${reset}"
 }
@@ -178,6 +178,7 @@ init() {
   fi
 
   pname=$(basename "$(pwd)")
+  generated_files=()
 
   echo ""
   echo -e "🚀 ${bold}Initializing scala-cli-nix project: ${green}${pname}${reset}"
@@ -188,6 +189,7 @@ init() {
     warn "derivation.nix already exists, skipping."
   else
     step "Writing derivation.nix..."
+    generated_files+=("derivation.nix")
     cat > derivation.nix << DERIVATION_EOF
 { scala-cli-nix }:
 
@@ -228,6 +230,7 @@ DERIVATION_EOF
     echo ""
   else
     step "Writing flake.nix..."
+    generated_files+=("flake.nix")
     cat > flake.nix << 'FLAKE_EOF'
 {
   inputs = {
@@ -275,6 +278,16 @@ FLAKE_EOF
   echo ""
   lock
   echo ""
+
+  generated_files+=("scala.lock.json")
+
+  # Stage generated files so nix build can see them
+  if git rev-parse --is-inside-work-tree &>/dev/null; then
+    step "Staging generated files..."
+    git add "${generated_files[@]}"
+    success "Staged ${bold}${generated_files[*]}${reset}"
+  fi
+
   echo -e "🎉 ${bold}Done!${reset} Run ${green}nix build${reset} to build your project."
 }
 

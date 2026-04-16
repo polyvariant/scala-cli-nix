@@ -3,7 +3,6 @@ set -euo pipefail
 
 bold='\033[1m'
 yellow='\033[0;33m'
-dim='\033[2m'
 reset='\033[0m'
 
 LOCKFILE="scala.lock.json"
@@ -19,39 +18,15 @@ needs_lock() {
   local export_json
   export_json=$(real-scala-cli export --json "$@" 2>/dev/null) || return 1
 
-  local pwd_dir
-  pwd_dir=$(pwd)
+  # Hash the entire export JSON — any change in sources, scala version,
+  # dependencies, repos, etc. will trigger a re-lock
+  local current_hash
+  current_hash=$(echo "$export_json" | jq -S '.' | shasum | cut -d' ' -f1)
+  local locked_hash
+  locked_hash=$(jq -r '.exportHash // ""' "$LOCKFILE")
 
-  # Compare sources
-  local current_sources
-  current_sources=$(echo "$export_json" | jq -S --arg pwd "$pwd_dir" '[.scopes.main.sources[] | ltrimstr($pwd + "/") | ltrimstr("/private" + $pwd + "/")]')
-  local locked_sources
-  locked_sources=$(jq -S '.sources // []' "$LOCKFILE")
-
-  if [ "$current_sources" != "$locked_sources" ]; then
-    echo -e "${yellow}🔒${reset} Sources changed, regenerating ${bold}${LOCKFILE}${reset}..." >&2
-    return 0
-  fi
-
-  # Compare scala version
-  local current_scala_version
-  current_scala_version=$(echo "$export_json" | jq -r '.scalaVersion')
-  local locked_scala_version
-  locked_scala_version=$(jq -r '.scalaVersion' "$LOCKFILE")
-
-  if [ "$current_scala_version" != "$locked_scala_version" ]; then
-    echo -e "${yellow}🔒${reset} Scala version changed (${dim}${locked_scala_version}${reset} → ${bold}${current_scala_version}${reset}), regenerating..." >&2
-    return 0
-  fi
-
-  # Compare dep coordinates hash
-  local current_deps_hash
-  current_deps_hash=$(echo "$export_json" | jq -r '[.scopes.main.dependencies[] | "\(.groupId):\(.artifactId.fullName):\(.version)"] | sort | .[]' | shasum | cut -d' ' -f1)
-  local locked_deps_hash
-  locked_deps_hash=$(jq -r '.depsHash // ""' "$LOCKFILE")
-
-  if [ "$current_deps_hash" != "$locked_deps_hash" ]; then
-    echo -e "${yellow}🔒${reset} Dependencies changed, regenerating ${bold}${LOCKFILE}${reset}..." >&2
+  if [ "$current_hash" != "$locked_hash" ]; then
+    echo -e "${yellow}🔒${reset} Project configuration changed, regenerating ${bold}${LOCKFILE}${reset}..." >&2
     return 0
   fi
 

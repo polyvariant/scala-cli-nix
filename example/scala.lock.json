@@ -1,8 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "scalaVersion": "3.8.3",
   "mainClass": "Main",
-  "depsHash": "98aad02aff640826bff1a0affff6712130b30b18",
+  "exportHash": "89af7292aedb1b8a71d66696d8069ffea91360b9",
   "sources": [
     "foo.scala"
   ],

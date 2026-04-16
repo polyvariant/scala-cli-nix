@@ -1,6 +1,6 @@
-{ scala-cli, openjdk, makeWrapper, runCommand, stdenv }:
+{ scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib }:
 let
-  supportedVersion = 1;
+  supportedVersion = 2;
 
   fetchDeps = lockFile:
     let
@@ -39,11 +39,22 @@ in {
       resolvedMainClass = if mainClass != null then mainClass else fetched.json.mainClass;
       sources = fetched.json.sources or null;
 
+      # Filter src to only include the source files listed in the lockfile
+      filteredSrc =
+        if sources != null
+        then lib.cleanSourceWith {
+          src = src;
+          filter = path: _type:
+            let rel = lib.removePrefix (toString src + "/") (toString path);
+            in builtins.elem rel sources;
+        }
+        else src;
+
       # Build the source arguments for scala-cli
       sourceArgs =
         if sources != null
-        then builtins.concatStringsSep " " (builtins.map (s: "${src}/${s}") sources)
-        else "${src}";
+        then builtins.concatStringsSep " " (builtins.map (s: "${filteredSrc}/${s}") sources)
+        else "${filteredSrc}";
 
       allDeps = fetched.compiler ++ fetched.libraryDependencies;
       depsCache = mkCacheDir "scala-cli-deps-${pname}" allDeps;

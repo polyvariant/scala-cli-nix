@@ -21,7 +21,7 @@ Implemented in `scala-cli-nix.sh`. Requires `scala-cli`, `cs` (Coursier), `jq`, 
   "version": 1,
   "scalaVersion": "3.8.3",
   "mainClass": "Main",
-  "depsHash": "<sha1 of sorted dep coordinates, for cheap staleness checks>",
+  "exportHash": "<sha1 of sorted scala-cli export JSON>",
   "sources": ["foo.scala"],
   "compiler": [
     {"url": "https://repo1.maven.org/...", "sha256": "base64..."},
@@ -36,8 +36,8 @@ Implemented in `scala-cli-nix.sh`. Requires `scala-cli`, `cs` (Coursier), `jq`, 
 
 - `version` is checked at build time — `lib.nix` rejects lockfiles that don't match the supported version. This prevents confusing errors when the lockfile format changes.
 - `compiler` and `libraryDependencies` contain JARs, their POMs, and any parent POMs referenced by those POMs. Parent POMs are needed because Coursier resolves version inheritance from parent POMs during offline resolution (e.g., `jline-reader` inherits version numbers from `jline-parent`).
-- `sources` lists the source files relative to the project root, recorded so the wrapper can detect when they change.
-- `depsHash` is a SHA1 of the sorted `groupId:artifactId:version` coordinates — a cheap way to detect dependency changes without re-fetching.
+- `sources` lists the source files relative to the project root.
+- `exportHash` is a SHA1 of the entire sorted `scala-cli export --json` output. The wrapper uses this single hash to detect any change — sources, scala version, dependencies, repositories, etc. — without needing to check each field individually.
 
 #### Coursier cache path structure
 
@@ -60,9 +60,10 @@ The lock script reconstructs URLs by stripping the cache prefix and re-adding `:
 `lib.nix` exposes `buildScalaCliApp { pname, version, src, lockFile, mainClass? }`.
 
 1. **Per-artifact FODs**: Each `{url, sha256}` entry becomes a `builtins.fetchurl` call. Each is its own Fixed-Output Derivation in the Nix store — updating one dependency only re-downloads that one JAR.
-2. **Deps cache**: All fetched artifacts are symlinked into a Coursier-compatible cache layout (`mkCacheDir`). This is set as `COURSIER_CACHE` so `scala-cli --offline` can resolve dependencies.
-3. **Compilation**: `scala-cli --power package <sources> --server=false --offline --library` compiles user code into a small JAR (~4KB) containing only the compiled classes, no bundled dependencies.
-4. **Wrapper**: `makeWrapper` creates an executable that runs `java -cp <all library JARs>:<compiled JAR> <mainClass>`. The classpath references individual Nix store paths — no duplication, each dep independently cacheable.
+2. **Source filtering**: The `src` is filtered using `lib.cleanSourceWith` to only include files listed in the lockfile's `sources` array. This means changes to unrelated files (e.g. `README.md`, `flake.nix`) don't trigger a rebuild.
+3. **Deps cache**: All fetched artifacts are symlinked into a Coursier-compatible cache layout (`mkCacheDir`). This is set as `COURSIER_CACHE` so `scala-cli --offline` can resolve dependencies.
+4. **Compilation**: `scala-cli --power package <sources> --server=false --offline --library` compiles user code into a small JAR (~4KB) containing only the compiled classes, no bundled dependencies.
+5. **Wrapper**: `makeWrapper` creates an executable that runs `java -cp <all library JARs>:<compiled JAR> <mainClass>`. The classpath references individual Nix store paths — no duplication, each dep independently cacheable.
 
 Key flags:
 - `--library` (not `--standalone` or `--assembly`): produces a tiny JAR with only user code. `--standalone` would bundle all deps into one fat JAR, defeating per-artifact store granularity.
@@ -96,11 +97,9 @@ The overlay provides four packages:
 The wrapped `scala-cli` intercepts every call and checks if the lockfile is stale before forwarding to the real scala-cli. The `needs_lock` function checks:
 
 1. Lockfile existence
-2. Source file list matches
-3. Scala version matches
-4. Dependency coordinates hash matches
+2. `exportHash` — a SHA1 of the entire `scala-cli export --json` output, compared against the hash stored in the lockfile
 
-All comparisons use data from `scala-cli export --json` (via `real-scala-cli` to avoid recursion) compared against the existing `scala.lock.json`. If anything changed, it runs `scala-cli-nix lock` before proceeding.
+This single hash catches any change: sources, scala version, dependencies, repositories, etc. If stale, it runs `scala-cli-nix lock` before proceeding.
 
 The wrapper forwards all CLI arguments (`"$@"`) to both the staleness check and the real scala-cli — it does not hardcode `.` as the input.
 
