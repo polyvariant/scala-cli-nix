@@ -33,6 +33,12 @@ lock() {
   scala_version=$(echo "$export_json" | jq -r '.scalaVersion')
   info "Scala version: ${bold}${scala_version}${reset}"
 
+  # Extract sources as relative paths
+  pwd_dir=$(pwd)
+  sources_json=$(echo "$export_json" | jq --arg pwd "$pwd_dir" '[.scopes.main.sources[] | ltrimstr($pwd + "/") | ltrimstr("/private" + $pwd + "/")]')
+  source_count=$(echo "$sources_json" | jq 'length')
+  info "Sources: ${bold}${source_count}${reset} files"
+
   deps=$(echo "$export_json" | jq -r '.scopes.main.dependencies[] | "\(.groupId):\(.artifactId.fullName):\(.version)"')
   dep_count=$(echo "$deps" | grep -c . || true)
   info "Found ${bold}${dep_count}${reset} dependencies"
@@ -104,7 +110,14 @@ lock() {
   done <<< "$lib_paths"
 
   step "Writing lockfile..."
-  echo "{\"scalaVersion\":\"$scala_version\",\"mainClass\":\"$main_class\",\"compiler\":[$compiler_entries],\"libraryDependencies\":[$lib_entries]}" | jq . > scala.lock.json
+  jq -n \
+    --arg scalaVersion "$scala_version" \
+    --arg mainClass "$main_class" \
+    --argjson sources "$sources_json" \
+    --argjson compiler "[$compiler_entries]" \
+    --argjson libraryDependencies "[$lib_entries]" \
+    '{scalaVersion: $scalaVersion, mainClass: $mainClass, sources: $sources, compiler: $compiler, libraryDependencies: $libraryDependencies}' \
+    > scala.lock.json
   success "Wrote ${bold}scala.lock.json${reset}"
 }
 

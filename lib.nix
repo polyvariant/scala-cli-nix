@@ -30,6 +30,13 @@ in {
     let
       fetched = fetchDeps lockFile;
       resolvedMainClass = if mainClass != null then mainClass else fetched.json.mainClass;
+      sources = fetched.json.sources or null;
+
+      # Build the source arguments for scala-cli
+      sourceArgs =
+        if sources != null
+        then builtins.concatStringsSep " " (builtins.map (s: "${src}/${s}") sources)
+        else "${src}";
 
       allDeps = fetched.compiler ++ fetched.libraryDependencies;
       depsCache = mkCacheDir "scala-cli-deps-${pname}" allDeps;
@@ -52,7 +59,7 @@ in {
           export HOME=$TMPDIR/home
           mkdir -p $HOME $COURSIER_ARCHIVE_CACHE $SCALA_CLI_HOME
 
-          scala-cli --power package ${src} --server=false --offline --library -o $out/share/${pname}.jar
+          scala-cli --power package ${sourceArgs} --server=false --offline --library -o $out/share/${pname}.jar
         '';
         installPhase = "true";
       };
