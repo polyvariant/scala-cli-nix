@@ -121,10 +121,9 @@ flake.nix              # Flake: overlay, packages, checks
 lib.nix                # buildScalaCliApp Nix function
 scala-cli-nix.sh       # CLI tool (init/lock), used via writeShellApplication
 scala-cli-wrapper.sh   # Auto-locking wrapper, used via writeShellApplication
-example/
-  foo.scala            # Example app (cats-effect hello world)
-  derivation.nix       # Example derivation
-  scala.lock.json      # Example lockfile (committed)
+examples/
+  scala3/              # Scala 3 example (cats-effect hello world)
+  scala2/              # Scala 2 example (os-lib hello world)
 ```
 
 ### Running checks
@@ -133,7 +132,7 @@ example/
 nix flake check --print-build-logs
 ```
 
-This builds the example app and verifies its output is `"hello world!"`.
+This builds both example apps (Scala 2 and 3) and verifies their output.
 
 ### Shell scripts and shellcheck
 
@@ -154,11 +153,11 @@ scala-cli run .
 # The wrapper will auto-generate scala.lock.json if missing/stale
 ```
 
-### Regenerating the example lockfile
+### Regenerating an example lockfile
 
 ```bash
-cd example
-nix run ..# -- lock
+cd examples/scala3
+nix run ../..# -- lock
 # or, from devShell:
 scala-cli-nix lock
 ```

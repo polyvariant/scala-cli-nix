@@ -50,8 +50,8 @@
             inherit system;
             overlays = [ self.overlays.default ];
           };
-          example = pkgs.callPackage ./example/derivation.nix { };
-          example-scala2 = pkgs.callPackage ./example-scala2/derivation.nix { };
+          example = pkgs.callPackage ./examples/scala3/derivation.nix { };
+          example-scala2 = pkgs.callPackage ./examples/scala2/derivation.nix { };
         in {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)

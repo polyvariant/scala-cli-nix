@@ -17,5 +17,5 @@ scala-cli-nix: Nix packaging for scala-cli applications with per-artifact FOD gr
 ```bash
 nix flake check --print-build-logs  # Build + test example app
 nix develop                          # Enter devShell with wrapped scala-cli
-cd example && nix run ..# -- lock   # Regenerate example lockfile
+cd examples/scala3 && nix run ../..# -- lock  # Regenerate example lockfile
 ```
