@@ -20,5 +20,26 @@
           };
         }
       );
+
+      checks = forAllSystems (system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          scn = pkgs.callPackage self.lib { };
+          example = pkgs.callPackage ./example/derivation.nix {
+            scala-cli-nix = scn;
+          };
+        in {
+          example = pkgs.runCommand "check-example" { } ''
+            output=$(${example}/bin/example)
+            if [ "$output" = "hello world!" ]; then
+              echo "OK: example output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello world!', got '$output'"
+              exit 1
+            fi
+          '';
+        }
+      );
     };
 }
