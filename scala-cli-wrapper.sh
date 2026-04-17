@@ -25,7 +25,7 @@ needs_lock() {
 
   # Get current state from scala-cli export
   local export_json
-  export_json=$(real-scala-cli export --json "${input_args[@]}" 2>/dev/null) || return 1
+  export_json=$(real-scala-cli --power export --json "${input_args[@]}" 2>/dev/null) || return 1
 
   # Hash the entire export JSON — any change in sources, scala version,
   # dependencies, repos, etc. will trigger a re-lock

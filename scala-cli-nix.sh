@@ -51,7 +51,7 @@ lock() {
   info "Found ${bold}${dep_count}${reset} dependencies"
 
   step "Discovering main class..."
-  main_class=$($SCALA_CLI run --main-class-list "${inputs[@]}" 2>/dev/null | head -1)
+  main_class=$($SCALA_CLI --power run --main-class-list "${inputs[@]}" 2>/dev/null | head -1)
   info "Main class: ${bold}${main_class}${reset}"
 
   step "Detecting Coursier cache..."
