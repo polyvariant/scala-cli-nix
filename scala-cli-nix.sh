@@ -35,7 +35,7 @@ lock() {
   local inputs=("${@:-.}")
 
   step "Exporting project info..."
-  export_json=$($SCALA_CLI export --json "${inputs[@]}" 2>/dev/null)
+  export_json=$($SCALA_CLI --power export --json "${inputs[@]}" 2>/dev/null)
 
   scala_version=$(echo "$export_json" | jq -r '.scalaVersion')
   info "Scala version: ${bold}${scala_version}${reset}"
