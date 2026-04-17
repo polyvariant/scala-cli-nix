@@ -17,30 +17,35 @@
           exec ${prev.scala-cli}/bin/scala-cli "$@"
         '';
 
-        # scala-cli-nix CLI tool (init/lock)
-        scala-cli-nix-cli = final.writeShellApplication {
+        # scala-cli-nix CLI tool (init/lock), built by its own buildScalaCliApp
+        scala-cli-nix-cli = let
+          base = final.callPackage ./cli/derivation.nix { };
+        in final.symlinkJoin {
           name = "scala-cli-nix";
-          runtimeInputs = [ final.real-scala-cli final.coursier final.jq final.nix ];
-          text = builtins.readFile ./scala-cli-nix.sh;
+          paths = [ base ];
+          nativeBuildInputs = [ final.makeWrapper ];
+          postBuild = ''
+            wrapProgram $out/bin/scala-cli-nix \
+              --prefix PATH : ${final.lib.makeBinPath [ final.real-scala-cli ]}
+          '';
         };
 
         # Wrapped scala-cli that auto-locks before forwarding
         scala-cli = final.writeShellApplication {
           name = "scala-cli";
-          runtimeInputs = [ final.real-scala-cli final.scala-cli-nix-cli final.jq ];
+          runtimeInputs = [ final.real-scala-cli final.scala-cli-nix-cli ];
           text = builtins.readFile ./scala-cli-wrapper.sh;
         };
       };
 
       packages = forAllSystems (system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
-        in {
-          default = pkgs.writeShellApplication {
-            name = "scala-cli-nix";
-            runtimeInputs = with pkgs; [ scala-cli coursier jq nix ];
-            text = builtins.readFile ./scala-cli-nix.sh;
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ self.overlays.default ];
           };
+        in {
+          default = pkgs.scala-cli-nix-cli;
         }
       );
 

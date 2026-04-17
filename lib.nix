@@ -1,6 +1,6 @@
 { scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib }:
 let
-  supportedVersion = 2;
+  supportedVersion = 3;
 
   fetchDeps = lockFile:
     let
