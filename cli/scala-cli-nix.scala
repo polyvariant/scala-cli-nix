@@ -31,13 +31,21 @@ import scala.jdk.CollectionConverters.*
 
 case class ArtifactEntry(url: String, sha256: String) derives Codec.AsObject
 
+case class NativeLockDeps(
+    compilerPlugins: List[ArtifactEntry],
+    runtimeDependencies: List[ArtifactEntry],
+    toolingDependencies: List[ArtifactEntry]
+) derives Codec.AsObject
+
 case class LockFile(
     version: Int,
     scalaVersion: String,
+    platform: String,
     exportHash: String,
     sources: List[String],
     compiler: List[ArtifactEntry],
-    libraryDependencies: List[ArtifactEntry]
+    libraryDependencies: List[ArtifactEntry],
+    native: Option[NativeLockDeps]
 ) derives Codec.AsObject
 
 // --- JSON model (scala-cli export, only the fields we use) ---
@@ -63,8 +71,19 @@ object ExportScope {
   }
 }
 
-case class ExportInfo(scalaVersion: String, scopes: Map[String, ExportScope])
-    derives Decoder
+case class NativeOptionsExport(
+    scalaNativeVersion: String,
+    compilerPlugins: List[ExportDependency],
+    runtimeDependencies: List[ExportDependency],
+    toolingDependencies: List[ExportDependency]
+) derives Decoder
+
+case class ExportInfo(
+    scalaVersion: String,
+    platform: Option[String],
+    nativeOptions: Option[NativeOptionsExport],
+    scopes: Map[String, ExportScope]
+) derives Decoder
 
 // --- Console helpers ---
 
@@ -160,7 +179,7 @@ val cacheDir: File = Cache.create().getLocation()
 val cachePath: Path = Path.fromNioPath(cacheDir.toPath)
 
 def cacheFileForUrl(url: String): File = {
-  val relative = url.replaceFirst("://", "/")
+  val relative = url.replaceFirst("://", "/").replace("+", "%2B")
   File(cacheDir, relative)
 }
 
@@ -344,6 +363,7 @@ private def computeLockContent(
     cwd: Path
 ): IO[String] = {
   val scalaVersion = export_.scalaVersion
+  val platform = export_.platform.getOrElse("JVM")
   val mainScope = export_.scopes.getOrElse("main", ExportScope(Nil, Nil))
   val sources = mainScope.sources.map { s =>
     s
@@ -371,8 +391,12 @@ private def computeLockContent(
           )
       }
 
+      def toDeps(eds: List[ExportDependency]): List[Dependency] =
+        eds.map(d => Dependency.of(d.groupId, d.artifactId.fullName, d.version))
+
       for {
         _ <- info(s"Scala version: ${C.bold}$scalaVersion${C.reset}")
+        _ <- info(s"Platform: ${C.bold}$platform${C.reset}")
         _ <- info(s"Sources: ${C.bold}${sources.size}${C.reset} files")
         _ <- info(s"Found ${C.bold}${deps.size}${C.reset} dependencies")
 
@@ -392,17 +416,32 @@ private def computeLockContent(
           s"Libraries: ${C.bold}${libArtifacts.size}${C.reset} artifacts (transitive)"
         )
 
+        nativeLockDeps <- export_.nativeOptions.traverse { opts =>
+          step("Fetching native dependencies...") *>
+            (
+              fetchArtifacts(toDeps(opts.compilerPlugins)*).flatMap(collectEntries),
+              fetchArtifacts(toDeps(opts.runtimeDependencies)*).flatMap(collectEntries),
+              fetchArtifacts(toDeps(opts.toolingDependencies)*).flatMap(collectEntries)
+            ).mapN(NativeLockDeps.apply).flatTap { n =>
+              val total =
+                n.compilerPlugins.size + n.runtimeDependencies.size + n.toolingDependencies.size
+              info(s"Native: ${C.bold}$total${C.reset} artifacts")
+            }
+        }
+
         _ <- step("Hashing artifacts...")
         compilerEntries <- collectEntries(compilerArtifacts)
         libEntries <- collectEntries(libArtifacts)
 
         lockFile = LockFile(
-          version = 4,
+          version = 5,
           scalaVersion = scalaVersion,
+          platform = platform,
           exportHash = exportHash,
           sources = sources,
           compiler = compilerEntries,
-          libraryDependencies = libEntries
+          libraryDependencies = libEntries,
+          native = nativeLockDeps
         )
       } yield lockfilePrinter.print(lockFile.asJson) + "\n"
 

@@ -13,9 +13,16 @@
         scala-cli-nix = final.callPackage self.lib { scala-cli = prev.scala-cli; };
 
         # The real scala-cli, accessible as real-scala-cli
-        real-scala-cli = final.writeShellScriptBin "real-scala-cli" ''
-          exec ${prev.scala-cli}/bin/scala-cli "$@"
-        '';
+        real-scala-cli =
+          let
+            bin = ./local-scala-cli;
+          in final.runCommand "real-scala-cli" {} ''
+            mkdir -p $out/bin
+            cp ${bin} $out/bin/real-scala-cli
+            chmod +x $out/bin/real-scala-cli
+            cp ${bin} $out/bin/scala-cli
+            chmod +x $out/bin/scala-cli
+          '';
 
         # scala-cli-nix CLI tool (init/lock), built by its own buildScalaCliApp
         scala-cli-nix-cli = let
@@ -57,6 +64,7 @@
           };
           example = pkgs.callPackage ./examples/scala3/derivation.nix { };
           example-scala2 = pkgs.callPackage ./examples/scala2/derivation.nix { };
+          example-scala-native = pkgs.callPackage ./examples/scala-native/derivation.nix { };
         in {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)
@@ -75,6 +83,16 @@
               touch $out
             else
               echo "FAIL: expected 'hello from scala 2!', got '$output'"
+              exit 1
+            fi
+          '';
+          example-scala-native = pkgs.runCommand "check-example-scala-native" { } ''
+            output=$(${example-scala-native}/bin/example-scala-native)
+            if [ "$output" = "hello from scala native!" ]; then
+              echo "OK: example-scala-native output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello from scala native!', got '$output'"
               exit 1
             fi
           '';
