@@ -79,15 +79,15 @@ object C {
 }
 
 def info(msg: String): IO[Unit] =
-  IO.consoleForIO.errorln(s"${C.blue}i${C.reset} $msg")
+  IO.consoleForIO.errorln(s"${C.blue}ℹ${C.reset}  $msg")
 def success(msg: String): IO[Unit] =
-  IO.consoleForIO.errorln(s"${C.green}done${C.reset} $msg")
+  IO.consoleForIO.errorln(s"${C.green}✔${C.reset}  $msg")
 def step(msg: String): IO[Unit] =
-  IO.consoleForIO.errorln(s"${C.bold}> $msg${C.reset}")
+  IO.consoleForIO.errorln(s"${C.bold}▶ $msg${C.reset}")
 def warn(msg: String): IO[Unit] =
-  IO.consoleForIO.errorln(s"${C.yellow}warn${C.reset} $msg")
+  IO.consoleForIO.errorln(s"${C.yellow}⚠${C.reset}  $msg")
 def error(msg: String): IO[Unit] =
-  IO.consoleForIO.errorln(s"${C.red}error${C.reset} $msg")
+  IO.consoleForIO.errorln(s"${C.red}✖${C.reset}  $msg")
 def errln(msg: String): IO[Unit] = IO.consoleForIO.errorln(msg)
 
 // --- Hashing ---
@@ -274,7 +274,8 @@ case class InitOptions()
 val hashPrinter: Printer = Printer.noSpaces.copy(sortKeys = true)
 val lockfilePrinter: Printer = Printer.spaces2.copy(sortKeys = true)
 
-def lock(inputs: List[String]): IO[ExitCode] = {
+/** Compute lockfile content without writing it. Returns None if up to date. */
+def computeLock(inputs: List[String]): IO[Option[String]] = {
   val inputArgs = if (inputs.isEmpty) List(".") else inputs
 
   for {
@@ -309,7 +310,7 @@ def lock(inputs: List[String]): IO[ExitCode] = {
 
     result <-
       if (isUpToDate)
-        info("Lock is up to date.").as(ExitCode.Success)
+        info("Lock is up to date.").as(None)
       else {
         val exportInfo = rawJson
           .as[ExportInfo]
@@ -317,21 +318,31 @@ def lock(inputs: List[String]): IO[ExitCode] = {
             new RuntimeException(s"Failed to decode export JSON: ${e.message}")
           )
         IO.fromEither(exportInfo)
-          .flatMap(
-            doLock(scalaCli, inputArgs, _, exportHash, lockfilePath, cwd)
-          )
+          .flatMap(computeLockContent(scalaCli, inputArgs, _, exportHash, cwd))
+          .map(Some(_))
       }
   } yield result
 }
 
-private def doLock(
+def lock(inputs: List[String]): IO[ExitCode] =
+  computeLock(inputs).flatMap {
+    case None => IO.pure(ExitCode.Success)
+    case Some(content) =>
+      for {
+        cwd <- Files[IO].currentWorkingDirectory
+        _ <- step("Writing lockfile...")
+        _ <- writeFile(cwd / "scala.lock.json", content)
+        _ <- success(s"Wrote ${C.bold}scala.lock.json${C.reset}")
+      } yield ExitCode.Success
+  }
+
+private def computeLockContent(
     scalaCli: String,
     inputArgs: List[String],
     export_ : ExportInfo,
     exportHash: String,
-    lockfilePath: Path,
     cwd: Path
-): IO[ExitCode] = {
+): IO[String] = {
   val scalaVersion = export_.scalaVersion
   val mainScope = export_.scopes.getOrElse("main", ExportScope(Nil, Nil))
   val sources = mainScope.sources.map { s =>
@@ -385,7 +396,6 @@ private def doLock(
         compilerEntries <- collectEntries(compilerArtifacts)
         libEntries <- collectEntries(libArtifacts)
 
-        _ <- step("Writing lockfile...")
         lockFile = LockFile(
           version = 4,
           scalaVersion = scalaVersion,
@@ -394,18 +404,17 @@ private def doLock(
           compiler = compilerEntries,
           libraryDependencies = libEntries
         )
-        _ <- writeFile(
-          lockfilePath,
-          lockfilePrinter.print(lockFile.asJson) + "\n"
-        )
-        _ <- success(s"Wrote ${C.bold}scala.lock.json${C.reset}")
-      } yield ExitCode.Success
+      } yield lockfilePrinter.print(lockFile.asJson) + "\n"
 
     case _ =>
       error(
         s"Unsupported Scala major version: $scalaMajor (from $scalaVersion)"
-      )
-        .as(ExitCode.Error)
+      ) *>
+        IO.raiseError(
+          new RuntimeException(
+            s"Unsupported Scala major version: $scalaMajor (from $scalaVersion)"
+          )
+        )
   }
 }
 
@@ -414,44 +423,52 @@ private def doLock(
 def init(inputs: List[String]): IO[ExitCode] =
   for {
     cwd <- Files[IO].currentWorkingDirectory
-    scalaFiles <- Files[IO]
-      .list(cwd)
-      .filter(_.extName == ".scala")
-      .compile
-      .toList
+    lockExists <- Files[IO].exists(cwd / "scala.lock.json")
     result <-
-      if (scalaFiles.isEmpty)
-        error("No .scala files found in current directory.").as(ExitCode.Error)
+      if (lockExists)
+        info(
+          s"${C.bold}scala.lock.json${C.reset} already exists, running ${C.bold}lock${C.reset} instead."
+        ) *> lock(inputs)
       else
-        doInit(cwd)
+        Files[IO]
+          .list(cwd)
+          .filter(_.extName == ".scala")
+          .compile
+          .toList
+          .flatMap { scalaFiles =>
+            if (scalaFiles.isEmpty)
+              error("No .scala files found in current directory.")
+                .as(ExitCode.Error)
+            else
+              doInit(cwd)
+          }
   } yield result
 
 private def doInit(cwd: Path): IO[ExitCode] = {
   val pname = cwd.fileName.toString
 
-  val writeDerivation: IO[List[String]] =
+  val prepareDerivation: IO[(List[(Path, String)], List[String])] =
     Files[IO].exists(cwd / "derivation.nix").flatMap {
       case true =>
-        warn("derivation.nix already exists, skipping.").as(Nil)
+        warn("derivation.nix already exists, skipping.")
+          .as((Nil, Nil))
       case false =>
-        step("Writing derivation.nix...") *>
-          writeFile(
-            cwd / "derivation.nix",
-            s"""{ scala-cli-nix }:
-               |
-               |scala-cli-nix.buildScalaCliApp {
-               |  pname = "$pname";
-               |  version = "0.1.0";
-               |  src = ./.;
-               |  lockFile = ./scala.lock.json;
-               |}
-               |""".stripMargin
-          ) *>
-          success(s"Wrote ${C.bold}derivation.nix${C.reset}")
-            .as(List("derivation.nix"))
+        val content =
+          s"""{ scala-cli-nix }:
+             |
+             |scala-cli-nix.buildScalaCliApp {
+             |  pname = "$pname";
+             |  version = "0.1.0";
+             |  src = ./.;
+             |  lockFile = ./scala.lock.json;
+             |}
+             |""".stripMargin
+        IO.pure(
+          (List(cwd / "derivation.nix" -> content), List("derivation.nix"))
+        )
     }
 
-  val writeFlake: IO[List[String]] =
+  val prepareFlake: IO[(List[(Path, String)], List[String])] =
     Files[IO].exists(cwd / "flake.nix").flatMap {
       case true =>
         errln("") *>
@@ -487,54 +504,50 @@ private def doInit(cwd: Path): IO[ExitCode] = {
           errln("") *>
           errln(s"    ${C.dim}pkgs.scala-cli${C.reset}") *>
           errln(s"    ${C.dim}pkgs.scala-cli-nix-cli${C.reset}") *>
-          errln("").as(Nil)
+          errln("").as((Nil, Nil))
       case false =>
-        step("Writing flake.nix...") *>
-          writeFile(
-            cwd / "flake.nix",
-            """|{
-               |  inputs = {
-               |    nixpkgs.url = "github:NixOS/nixpkgs";
-               |    scala-cli-nix.url = "github:scala-nix/scala-cli-nix";
-               |    scala-cli-nix.inputs.nixpkgs.follows = "nixpkgs";
-               |  };
-               |
-               |  outputs = { nixpkgs, scala-cli-nix, ... }:
-               |    let
-               |      forAllSystems = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" ];
-               |    in {
-               |      packages = forAllSystems (system:
-               |        let
-               |          pkgs = import nixpkgs {
-               |            inherit system;
-               |            overlays = [ scala-cli-nix.overlays.default ];
-               |          };
-               |        in {
-               |          default = pkgs.callPackage ./derivation.nix { };
-               |        }
-               |      );
-               |
-               |      devShells = forAllSystems (system:
-               |        let
-               |          pkgs = import nixpkgs {
-               |            inherit system;
-               |            overlays = [ scala-cli-nix.overlays.default ];
-               |          };
-               |        in {
-               |          default = pkgs.mkShell {
-               |            buildInputs = [
-               |              pkgs.scala-cli
-               |              pkgs.scala-cli-nix-cli
-               |            ];
-               |          };
-               |        }
-               |      );
-               |    };
-               |}
-               |""".stripMargin
-          ) *>
-          success(s"Wrote ${C.bold}flake.nix${C.reset}")
-            .as(List("flake.nix"))
+        val content =
+          """|{
+             |  inputs = {
+             |    nixpkgs.url = "github:NixOS/nixpkgs";
+             |    scala-cli-nix.url = "github:scala-nix/scala-cli-nix";
+             |    scala-cli-nix.inputs.nixpkgs.follows = "nixpkgs";
+             |  };
+             |
+             |  outputs = { nixpkgs, scala-cli-nix, ... }:
+             |    let
+             |      forAllSystems = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" ];
+             |    in {
+             |      packages = forAllSystems (system:
+             |        let
+             |          pkgs = import nixpkgs {
+             |            inherit system;
+             |            overlays = [ scala-cli-nix.overlays.default ];
+             |          };
+             |        in {
+             |          default = pkgs.callPackage ./derivation.nix { };
+             |        }
+             |      );
+             |
+             |      devShells = forAllSystems (system:
+             |        let
+             |          pkgs = import nixpkgs {
+             |            inherit system;
+             |            overlays = [ scala-cli-nix.overlays.default ];
+             |          };
+             |        in {
+             |          default = pkgs.mkShell {
+             |            buildInputs = [
+             |              pkgs.scala-cli
+             |              pkgs.scala-cli-nix-cli
+             |            ];
+             |          };
+             |        }
+             |      );
+             |    };
+             |}
+             |""".stripMargin
+        IO.pure((List(cwd / "flake.nix" -> content), List("flake.nix")))
     }
 
   for {
@@ -543,18 +556,28 @@ private def doInit(cwd: Path): IO[ExitCode] = {
       s"${C.bold}Initializing scala-cli-nix project: ${C.green}$pname${C.reset}"
     )
     _ <- errln("")
-    derivationFiles <- writeDerivation
-    flakeFiles <- writeFlake
+    derivation <- prepareDerivation
+    flake <- prepareFlake
     _ <- errln("")
-    _ <- lock(Nil)
+    lockContent <- computeLock(Nil)
+    pendingFiles =
+      derivation._1 ++ flake._1 ++ lockContent
+        .map(c => (cwd / "scala.lock.json") -> c)
+        .toList
+    fileNames = derivation._2 ++ flake._2 ++
+      lockContent.map(_ => "scala.lock.json").toList
+    _ <- step("Writing files...")
+    _ <- pendingFiles.traverse_ { case (path, content) => writeFile(path, content) }
+    _ <- pendingFiles.traverse_ { case (path, _) =>
+      success(s"Wrote ${C.bold}${path.fileName}${C.reset}")
+    }
     _ <- errln("")
-    files = (derivationFiles ++ flakeFiles) :+ "scala.lock.json"
     isGit <- execCode("git", "rev-parse", "--is-inside-work-tree")
     _ <-
-      if (isGit == 0)
+      if (isGit == 0 && fileNames.nonEmpty)
         step("Staging generated files...") *>
-          exec("git", ("add" :: files)*).void *>
-          success(s"Staged ${C.bold}${files.mkString(" ")}${C.reset}")
+          exec("git", ("add" :: fileNames)*).void *>
+          success(s"Staged ${C.bold}${fileNames.mkString(" ")}${C.reset}")
       else
         IO.unit
     _ <- errln(

@@ -137,7 +137,7 @@ This builds both example apps (Scala 2 and 3) and verifies their output.
 
 The wrapper (`scala-cli-wrapper.sh`) is packaged with `writeShellApplication`, which automatically runs shellcheck.
 
-The CLI tool itself (`cli/scala-cli-nix.scala`) is written in Scala 3 and built by `buildScalaCliApp`. It uses `coursierapi` for dependency resolution, `os-lib` for subprocess execution, and `upickle` for JSON. To update the CLI's own lockfile after changing its dependencies, run:
+The CLI tool itself (`cli/scala-cli-nix.scala`) is written in Scala 3 and built by `buildScalaCliApp`. It uses `coursierapi` for dependency resolution, `fs2` for process execution and file I/O, and `circe` for JSON. To update the CLI's own lockfile after changing its dependencies, run:
 
 ```bash
 cd cli
