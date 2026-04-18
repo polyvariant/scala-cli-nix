@@ -43,9 +43,11 @@ in {
         if sources != null
         then lib.cleanSourceWith {
           src = src;
-          filter = path: _type:
+          filter = path: type:
             let rel = lib.removePrefix (toString src + "/") (toString path);
-            in builtins.elem rel sources;
+            in if type == "directory"
+              then builtins.any (s: lib.hasPrefix (rel + "/") s) sources
+              else builtins.elem rel sources;
         }
         else src;
 
