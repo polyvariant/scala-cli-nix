@@ -254,7 +254,7 @@ def lock(inputs: List[String]): IO[ExitCode] = {
     _ <- step("Exporting project info...")
     exportJson <- exec(
       scalaCli,
-      ("--power" :: "export" :: "--json" :: inputArgs)*
+      ("--power" :: "export" :: "--json" :: "--server=false" :: "--offline" :: inputArgs)*
     )
 
     export_ = ujson.read(exportJson)
@@ -322,7 +322,7 @@ private def doLock(
         _ <- step("Discovering main class...")
         mainClass <- exec(
           scalaCli,
-          ("--power" :: "run" :: "--main-class-list" :: inputArgs)*
+          ("--power" :: "run" :: "--main-class-list" :: "--server=false" :: "--offline" :: inputArgs)*
         )
           .map(_.linesIterator.next())
         _ <- info(s"Main class: ${C.bold}$mainClass${C.reset}")
