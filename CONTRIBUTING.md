@@ -9,18 +9,16 @@ scala-cli-nix has two phases: **lock** (runs outside Nix, has network) and **bui
 Implemented in `cli/scala-cli-nix.scala` (Scala 3). The CLI is itself built by `buildScalaCliApp` (self-hosting). At runtime, only `real-scala-cli` needs to be on PATH.
 
 1. `scala-cli export --json <inputs>` discovers the Scala version, source files, and direct+transitive dependencies.
-2. `scala-cli run --main-class-list <inputs>` discovers the main class.
-3. `coursierapi.Fetch` (from `io.get-coursier:interface`) downloads all transitive JARs for both the compiler and library dependencies. No `cs` CLI needed — resolution happens in-process.
-4. For each JAR, the adjacent POM is found in the Coursier cache. Parent POMs are discovered by walking the `<parent>` chain using regex. SHA-256 hashes are computed in-process via `java.security.MessageDigest` — no `nix hash file` needed.
-5. The output is `scala.lock.json`.
+2. `coursierapi.Fetch` (from `io.get-coursier:interface`) downloads all transitive JARs for both the compiler and library dependencies. No `cs` CLI needed — resolution happens in-process.
+3. For each JAR, the adjacent POM is found in the Coursier cache. Parent POMs are discovered by walking the `<parent>` chain using regex. SHA-256 hashes are computed in-process via `java.security.MessageDigest` — no `nix hash file` needed.
+4. The output is `scala.lock.json`.
 
 #### Lockfile format (`scala.lock.json`)
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "scalaVersion": "3.8.3",
-  "mainClass": "Main",
   "exportHash": "<sha1 of sorted scala-cli export JSON>",
   "sources": ["foo.scala"],
   "compiler": [
@@ -34,7 +32,7 @@ Implemented in `cli/scala-cli-nix.scala` (Scala 3). The CLI is itself built by `
 }
 ```
 
-- `version` is checked at build time — `lib.nix` rejects lockfiles that don't match version 3. This prevents confusing errors when the lockfile format changes.
+- `version` is checked at build time — `lib.nix` rejects lockfiles that don't match version 4. This prevents confusing errors when the lockfile format changes.
 - `compiler` and `libraryDependencies` contain JARs, their POMs, and any parent POMs referenced by those POMs. Parent POMs are needed because Coursier resolves version inheritance from parent POMs during offline resolution (e.g., `jline-reader` inherits version numbers from `jline-parent`).
 - `sources` lists the source files relative to the project root.
 - `exportHash` is a SHA-1 hex digest of the canonicalized (sorted keys, 2-space indent) `scala-cli export --json` output followed by a newline. The lock command uses this to detect staleness — if the hash matches, it skips re-locking.
@@ -57,13 +55,14 @@ The lock script reconstructs URLs by stripping the cache prefix and re-adding `:
 
 ### Phase 2: Building (`lib.nix`)
 
-`lib.nix` exposes `buildScalaCliApp { pname, version, src, lockFile, mainClass? }`.
+`lib.nix` exposes `buildScalaCliApp { pname, version, src, lockFile, mainClass? }`. The `mainClass` parameter is only needed when the project has multiple main classes — otherwise it is discovered automatically at build time.
 
 1. **Per-artifact FODs**: Each `{url, sha256}` entry becomes a `builtins.fetchurl` call. Each is its own Fixed-Output Derivation in the Nix store — updating one dependency only re-downloads that one JAR.
 2. **Source filtering**: The `src` is filtered using `lib.cleanSourceWith` to only include files listed in the lockfile's `sources` array. This means changes to unrelated files (e.g. `README.md`, `flake.nix`) don't trigger a rebuild.
 3. **Deps cache**: All fetched artifacts are symlinked into a Coursier-compatible cache layout (`mkCacheDir`). This is set as `COURSIER_CACHE` so `scala-cli --offline` can resolve dependencies.
 4. **Compilation**: `scala-cli --power package <sources> --server=false --offline --library` compiles user code into a small JAR (~4KB) containing only the compiled classes, no bundled dependencies.
-5. **Wrapper**: `makeWrapper` creates an executable that runs `java -cp <all library JARs>:<compiled JAR> <mainClass>`. The classpath references individual Nix store paths — no duplication, each dep independently cacheable.
+5. **Main class discovery**: Unless `mainClass` is explicitly passed, `scala-cli --power run --main-class-list <sources> --server=false --offline` is run inside the sandbox to find the main class. If there isn't exactly one, the build fails with an error asking the user to pass `mainClass` explicitly.
+6. **Wrapper**: `makeWrapper` creates an executable that runs `java -cp <all library JARs>:<compiled JAR> <mainClass>`. The classpath references individual Nix store paths — no duplication, each dep independently cacheable.
 
 Key flags:
 - `--library` (not `--standalone` or `--assembly`): produces a tiny JAR with only user code. `--standalone` would bundle all deps into one fat JAR, defeating per-artifact store granularity.
@@ -92,7 +91,7 @@ The overlay provides four packages:
 
 **Critical**: When calling `lib.nix` from the overlay, `scala-cli` must be passed as `prev.scala-cli` (the unwrapped upstream version). Otherwise the build would use the auto-locking wrapper, which tries to run `scala-cli export` inside the sandbox (no network) and fails.
 
-The `scala-cli-nix-cli` package is wrapped with `makeWrapper` to put `real-scala-cli` on PATH at runtime (needed for `export --json` and `run --main-class-list`).
+The `scala-cli-nix-cli` package is wrapped with `makeWrapper` to put `real-scala-cli` on PATH at runtime (needed for `export --json`).
 
 ### Auto-locking wrapper (`scala-cli-wrapper.sh`)
 

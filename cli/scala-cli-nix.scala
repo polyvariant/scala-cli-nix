@@ -31,7 +31,6 @@ case class ArtifactEntry(url: String, sha256: String) derives ReadWriter
 case class LockFile(
     version: Int,
     scalaVersion: String,
-    mainClass: String,
     exportHash: String,
     sources: List[String],
     compiler: List[ArtifactEntry],
@@ -319,14 +318,6 @@ private def doLock(
         _ <- info(s"Sources: ${C.bold}${sources.size}${C.reset} files")
         _ <- info(s"Found ${C.bold}${deps.size}${C.reset} dependencies")
 
-        _ <- step("Discovering main class...")
-        mainClass <- exec(
-          scalaCli,
-          ("--power" :: "run" :: "--main-class-list" :: "--server=false" :: "--offline" :: inputArgs)*
-        )
-          .map(_.linesIterator.next())
-        _ <- info(s"Main class: ${C.bold}$mainClass${C.reset}")
-
         _ <- step("Fetching compiler dependencies...")
         compilerArtifacts <- fetchArtifacts(compilerArtifact)
         _ <- info(
@@ -349,9 +340,8 @@ private def doLock(
 
         _ <- step("Writing lockfile...")
         lockFile = LockFile(
-          version = 3,
+          version = 4,
           scalaVersion = scalaVersion,
-          mainClass = mainClass,
           exportHash = exportHash,
           sources = sources,
           compiler = compilerEntries,

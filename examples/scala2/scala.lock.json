@@ -1,7 +1,6 @@
 {
-  "version": 3,
+  "version": 4,
   "scalaVersion": "2.13.18",
-  "mainClass": "Main",
   "exportHash": "a27013256831178369443994e212d2bc9dec78b5",
   "sources": [
     "app.scala"

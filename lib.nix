@@ -1,6 +1,6 @@
 { scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib }:
 let
-  supportedVersion = 3;
+  supportedVersion = 4;
 
   fetchDeps = lockFile:
     let
@@ -36,7 +36,6 @@ in {
   buildScalaCliApp = { pname, version, src, lockFile, mainClass ? null }:
     let
       fetched = fetchDeps lockFile;
-      resolvedMainClass = if mainClass != null then mainClass else fetched.json.mainClass;
       sources = fetched.json.sources or null;
 
       # Filter src to only include the source files listed in the lockfile
@@ -78,9 +77,24 @@ in {
           mkdir -p $HOME $COURSIER_ARCHIVE_CACHE $SCALA_CLI_HOME
 
           scala-cli --power package ${sourceArgs} --server=false --offline --library -o $out/share/${pname}.jar
+        '' + lib.optionalString (mainClass == null) ''
+          MAIN_CLASSES=$(scala-cli --power run --main-class-list ${sourceArgs} --server=false --offline)
+          MAIN_CLASS_COUNT=$(echo "$MAIN_CLASSES" | wc -l)
+          if [ "$MAIN_CLASS_COUNT" -ne 1 ]; then
+            echo "error: found $MAIN_CLASS_COUNT main classes, expected exactly 1:"
+            echo "$MAIN_CLASSES"
+            echo "Pass mainClass to buildScalaCliApp to disambiguate."
+            exit 1
+          fi
+          echo -n "$MAIN_CLASSES" > $out/share/main-class
         '';
         installPhase = "true";
       };
+
+      resolvedMainClass =
+        if mainClass != null
+        then mainClass
+        else builtins.readFile "${compiledJar}/share/main-class";
 
     in stdenv.mkDerivation {
       inherit pname version;
