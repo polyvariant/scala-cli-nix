@@ -1,0 +1,7 @@
+- [x] Is the current source filtering system working correctly? I mean, will it prevent a situation in which the whole repo gets copied to the nix store, e.g. in Nix Flakes setups, because ./. is used (and only filtered as we make the derivation)? 
+- [x] Dependencies are optional. You should handle them not being there. Worth checking if any other fields are optional - find the export format in scala-cli's sources in ../scala-cli. Also, move to circe. 
+- [ ] Don't write any files until we have them all in memory. For example, if export fails, we shouldn't generate a flake.
+- [ ] Somewhere in the rewrite from Bash to Scala, we lost emojis - bring them back
+- [ ] If there's already a lockfile, `init` should automatically switch to call `lock` instead. Inform the user.
+- [x] Move to case-app for command-line parsing (check how /Users/kubukoz/projects/movie-rewrite/migration.scala does it), use Cats Effect for IO and avoid vars/mutability
+- [ ] Add zsh completions like in ~/dev/sde-scala

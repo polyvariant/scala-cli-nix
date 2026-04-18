@@ -1,7 +1,8 @@
 //> using scala 3.8.3
 //> using scalacOption -no-indent
 //> using dep io.get-coursier:interface:1.0.29-M3
-//> using dep com.lihaoyi::upickle:4.1.0
+//> using dep io.circe::circe-generic:0.14.15
+//> using dep io.circe::circe-parser:0.14.15
 //> using dep org.typelevel::cats-effect:3.7.0
 //> using dep co.fs2::fs2-io:3.13.0
 //> using dep com.github.alexarchambault::case-app:2.1.0
@@ -18,15 +19,17 @@ import coursierapi.*
 import fs2.Stream
 import fs2.io.file.{Files, Path}
 import fs2.io.process.ProcessBuilder
+import io.circe.{Codec, Decoder, Json, Printer}
+import io.circe.parser.parse as parseJson
+import io.circe.syntax.*
 import java.io.File
 import java.security.MessageDigest
 import java.util.Base64
 import scala.jdk.CollectionConverters.*
-import upickle.default.*
 
-// --- JSON model ---
+// --- JSON model (lockfile) ---
 
-case class ArtifactEntry(url: String, sha256: String) derives ReadWriter
+case class ArtifactEntry(url: String, sha256: String) derives Codec.AsObject
 
 case class LockFile(
     version: Int,
@@ -35,7 +38,33 @@ case class LockFile(
     sources: List[String],
     compiler: List[ArtifactEntry],
     libraryDependencies: List[ArtifactEntry]
-) derives ReadWriter
+) derives Codec.AsObject
+
+// --- JSON model (scala-cli export, only the fields we use) ---
+
+case class ExportArtifactId(fullName: String) derives Decoder
+
+case class ExportDependency(
+    groupId: String,
+    artifactId: ExportArtifactId,
+    version: String
+) derives Decoder
+
+case class ExportScope(
+    sources: List[String],
+    dependencies: List[ExportDependency]
+)
+object ExportScope {
+  given Decoder[ExportScope] = Decoder.instance { c =>
+    for {
+      sources <- c.get[List[String]]("sources")
+      deps <- c.getOrElse[List[ExportDependency]]("dependencies")(Nil)
+    } yield ExportScope(sources, deps)
+  }
+}
+
+case class ExportInfo(scalaVersion: String, scopes: Map[String, ExportScope])
+    derives Decoder
 
 // --- Console helpers ---
 
@@ -242,6 +271,9 @@ case class InitOptions()
 
 // --- Lock command ---
 
+val hashPrinter: Printer = Printer.noSpaces.copy(sortKeys = true)
+val lockfilePrinter: Printer = Printer.spaces2.copy(sortKeys = true)
+
 def lock(inputs: List[String]): IO[ExitCode] = {
   val inputArgs = if (inputs.isEmpty) List(".") else inputs
 
@@ -256,16 +288,21 @@ def lock(inputs: List[String]): IO[ExitCode] = {
       ("--power" :: "export" :: "--json" :: "--server=false" :: "--offline" :: inputArgs)*
     )
 
-    export_ = ujson.read(exportJson)
-    canonicalExport = ujson.write(export_, indent = 2, sortKeys = true)
+    rawJson <- IO.fromEither(
+      parseJson(exportJson).leftMap(e =>
+        new RuntimeException(s"Failed to parse export JSON: ${e.message}")
+      )
+    )
+    canonicalExport = hashPrinter.print(rawJson)
     exportHash = sha1Hex(canonicalExport + "\n")
 
     lockExists <- Files[IO].exists(lockfilePath)
     isUpToDate <-
       if (lockExists)
         readFile(lockfilePath).map { content =>
-          val existing = ujson.read(content)
-          existing.obj.get("exportHash").map(_.str).contains(exportHash)
+          parseJson(content).toOption
+            .flatMap(_.hcursor.get[String]("exportHash").toOption)
+            .contains(exportHash)
         }
       else
         IO.pure(false)
@@ -273,28 +310,38 @@ def lock(inputs: List[String]): IO[ExitCode] = {
     result <-
       if (isUpToDate)
         info("Lock is up to date.").as(ExitCode.Success)
-      else
-        doLock(scalaCli, inputArgs, export_, exportHash, lockfilePath, cwd)
+      else {
+        val exportInfo = rawJson
+          .as[ExportInfo]
+          .leftMap(e =>
+            new RuntimeException(s"Failed to decode export JSON: ${e.message}")
+          )
+        IO.fromEither(exportInfo)
+          .flatMap(
+            doLock(scalaCli, inputArgs, _, exportHash, lockfilePath, cwd)
+          )
+      }
   } yield result
 }
 
 private def doLock(
     scalaCli: String,
     inputArgs: List[String],
-    export_ : ujson.Value,
+    export_ : ExportInfo,
     exportHash: String,
     lockfilePath: Path,
     cwd: Path
 ): IO[ExitCode] = {
-  val scalaVersion = export_("scalaVersion").str
-  val sources = export_("scopes")("main")("sources").arr.map { s =>
-    s.str
+  val scalaVersion = export_.scalaVersion
+  val mainScope = export_.scopes.getOrElse("main", ExportScope(Nil, Nil))
+  val sources = mainScope.sources.map { s =>
+    s
       .stripPrefix(cwd.toString + "/")
       .stripPrefix("/private" + cwd.toString + "/")
-  }.toList
-  val deps = export_("scopes")("main")("dependencies").arr.map { d =>
-    s"${d("groupId").str}:${d("artifactId")("fullName").str}:${d("version").str}"
-  }.toList
+  }
+  val deps = mainScope.dependencies.map { d =>
+    s"${d.groupId}:${d.artifactId.fullName}:${d.version}"
+  }
 
   val scalaMajor = scalaVersion.takeWhile(_ != '.')
 
@@ -349,7 +396,7 @@ private def doLock(
         )
         _ <- writeFile(
           lockfilePath,
-          ujson.write(writeJs(lockFile), indent = 2) + "\n"
+          lockfilePrinter.print(lockFile.asJson) + "\n"
         )
         _ <- success(s"Wrote ${C.bold}scala.lock.json${C.reset}")
       } yield ExitCode.Success
