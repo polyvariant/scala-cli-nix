@@ -13,7 +13,7 @@ let
       fetchAll = deps: builtins.map (dep: { inherit dep; path = builtins.fetchurl dep; }) deps;
       native = json.native or null;
     in assert versionCheck; {
-      inherit json;
+      inherit json native;
       platform = json.platform or "JVM";
       # Each builtins.fetchurl is its own FOD — per-artifact granularity
       compiler = fetchAll json.compiler;
@@ -76,11 +76,11 @@ let
         buildInputs = [ scala-cli openjdk ];
 
         COURSIER_CACHE = depsCache;
-        COURSIER_ARCHIVE_CACHE = "/tmp/coursier-arc";
-        SCALA_CLI_HOME = "/tmp/scala-cli-home";
 
         buildPhase = ''
           export HOME=$TMPDIR/home
+          export COURSIER_ARCHIVE_CACHE=$TMPDIR/coursier-arc
+          export SCALA_CLI_HOME=$TMPDIR/scala-cli-home
           mkdir -p $HOME $COURSIER_ARCHIVE_CACHE $SCALA_CLI_HOME
 
           scala-cli --power package ${sourceArgs} --server=false --offline --library -o $out/share/${pname}.jar
@@ -126,11 +126,11 @@ let
       buildInputs = [ scala-cli openjdk clang which ];
 
       COURSIER_CACHE = depsCache;
-      COURSIER_ARCHIVE_CACHE = "/tmp/coursier-arc";
-      SCALA_CLI_HOME = "/tmp/scala-cli-home";
 
       buildPhase = ''
         export HOME=$TMPDIR/home
+        export COURSIER_ARCHIVE_CACHE=$TMPDIR/coursier-arc
+        export SCALA_CLI_HOME=$TMPDIR/scala-cli-home
         mkdir -p $HOME $COURSIER_ARCHIVE_CACHE $SCALA_CLI_HOME $out/bin
 
         scala-cli --power package ${sourceArgs} --server=false --offline -o $out/bin/${pname}

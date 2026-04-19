@@ -65,6 +65,7 @@
           example = pkgs.callPackage ./examples/scala3/derivation.nix { };
           example-scala2 = pkgs.callPackage ./examples/scala2/derivation.nix { };
           example-scala-native = pkgs.callPackage ./examples/scala-native/derivation.nix { };
+          example-scala-native-ce = pkgs.callPackage ./examples/scala-native-ce/derivation.nix { };
         in {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)
@@ -93,6 +94,16 @@
               touch $out
             else
               echo "FAIL: expected 'hello from scala native!', got '$output'"
+              exit 1
+            fi
+          '';
+          example-scala-native-ce = pkgs.runCommand "check-example-scala-native-ce" { } ''
+            output=$(${example-scala-native-ce}/bin/example-scala-native-ce)
+            if [ "$output" = "hello from scala native with cats-effect!" ]; then
+              echo "OK: example-scala-native-ce output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello from scala native with cats-effect!', got '$output'"
               exit 1
             fi
           '';

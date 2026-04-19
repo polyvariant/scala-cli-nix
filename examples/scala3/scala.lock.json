@@ -65,7 +65,7 @@
       "url": "https://repo1.maven.org/maven2/org/scala-sbt/util-interface/1.10.7/util-interface-1.10.7.pom"
     }
   ],
-  "exportHash": "92e51b5ff1943e87ab5fb4f1a27aaa85e2e44d1a",
+  "exportHash": "107d65c39a99fade9e4102541e676fbbd03f6422",
   "libraryDependencies": [
     {
       "sha256": "dAx59/w9rixe70joX3d9Z5ofD1P9u3gL+E3qA3AiCmE=",

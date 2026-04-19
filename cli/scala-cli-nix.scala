@@ -32,6 +32,7 @@ import scala.jdk.CollectionConverters.*
 case class ArtifactEntry(url: String, sha256: String) derives Codec.AsObject
 
 case class NativeLockDeps(
+    scalaNativeVersion: String,
     compilerPlugins: List[ArtifactEntry],
     runtimeDependencies: List[ArtifactEntry],
     toolingDependencies: List[ArtifactEntry]
@@ -205,7 +206,7 @@ def findPomForJar(jarUrl: String): IO[Option[Path]] = {
 def urlForCachePath(file: Path): String = {
   val relative = file.toString.stripPrefix(cachePath.toString + "/")
   val proto = relative.takeWhile(_ != '/')
-  val rest = relative.drop(proto.length + 1)
+  val rest = relative.drop(proto.length + 1).replace("%2B", "+")
   s"$proto://$rest"
 }
 
@@ -291,7 +292,8 @@ case class InitOptions()
 // --- Lock command ---
 
 val hashPrinter: Printer = Printer.noSpaces.copy(sortKeys = true)
-val lockfilePrinter: Printer = Printer.spaces2.copy(sortKeys = true)
+val lockfilePrinter: Printer =
+  Printer.spaces2.copy(sortKeys = true, colonLeft = "", dropNullValues = true)
 
 /** Compute lockfile content without writing it. Returns None if up to date. */
 def computeLock(inputs: List[String]): IO[Option[String]] = {
@@ -345,7 +347,7 @@ def computeLock(inputs: List[String]): IO[Option[String]] = {
 
 def lock(inputs: List[String]): IO[ExitCode] =
   computeLock(inputs).flatMap {
-    case None => IO.pure(ExitCode.Success)
+    case None          => IO.pure(ExitCode.Success)
     case Some(content) =>
       for {
         cwd <- Files[IO].currentWorkingDirectory
@@ -407,26 +409,32 @@ private def computeLockContent(
         )
 
         _ <- step("Fetching library dependencies...")
-        libDeps = libraryArtifact +: deps.map { dep =>
+        userDeps = deps.map { dep =>
           val parts = dep.split(":")
           Dependency.of(parts(0), parts(1), parts(2))
         }
-        libArtifacts <- fetchArtifacts(libDeps*)
+        // For Native: combine library + native compilerPlugins + runtimeDependencies
+        // into a single resolution to match scala-cli's behavior.
+        // Tooling deps use a different Scala version (2.12) and stay separate.
+        nativeNonToolingDeps = export_.nativeOptions.toList.flatMap { opts =>
+          toDeps(opts.compilerPlugins) ++ toDeps(opts.runtimeDependencies)
+        }
+        allLibDeps = (libraryArtifact +: userDeps) ++ nativeNonToolingDeps
+        libArtifacts <- fetchArtifacts(allLibDeps*)
         _ <- info(
           s"Libraries: ${C.bold}${libArtifacts.size}${C.reset} artifacts (transitive)"
         )
 
         nativeLockDeps <- export_.nativeOptions.traverse { opts =>
-          step("Fetching native dependencies...") *>
-            (
-              fetchArtifacts(toDeps(opts.compilerPlugins)*).flatMap(collectEntries),
-              fetchArtifacts(toDeps(opts.runtimeDependencies)*).flatMap(collectEntries),
-              fetchArtifacts(toDeps(opts.toolingDependencies)*).flatMap(collectEntries)
-            ).mapN(NativeLockDeps.apply).flatTap { n =>
-              val total =
-                n.compilerPlugins.size + n.runtimeDependencies.size + n.toolingDependencies.size
-              info(s"Native: ${C.bold}$total${C.reset} artifacts")
-            }
+          step("Fetching native tooling dependencies...") *>
+            fetchArtifacts(toDeps(opts.toolingDependencies)*)
+              .flatMap(collectEntries)
+              .map(NativeLockDeps(opts.scalaNativeVersion, Nil, Nil, _))
+              .flatTap { n =>
+                info(
+                  s"Native tooling: ${C.bold}${n.toolingDependencies.size}${C.reset} artifacts"
+                )
+              }
         }
 
         _ <- step("Hashing artifacts...")
@@ -606,7 +614,9 @@ private def doInit(cwd: Path): IO[ExitCode] = {
     fileNames = derivation._2 ++ flake._2 ++
       lockContent.map(_ => "scala.lock.json").toList
     _ <- step("Writing files...")
-    _ <- pendingFiles.traverse_ { case (path, content) => writeFile(path, content) }
+    _ <- pendingFiles.traverse_ { case (path, content) =>
+      writeFile(path, content)
+    }
     _ <- pendingFiles.traverse_ { case (path, _) =>
       success(s"Wrote ${C.bold}${path.fileName}${C.reset}")
     }
