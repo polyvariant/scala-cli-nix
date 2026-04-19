@@ -8,42 +8,82 @@ scala-cli-nix has two phases: **lock** (runs outside Nix, has network) and **bui
 
 Implemented in `cli/scala-cli-nix.scala` (Scala 3). The CLI is itself built by `buildScalaCliApp` (self-hosting). At runtime, only `real-scala-cli` needs to be on PATH.
 
-1. `scala-cli export --json <inputs>` discovers the Scala version, source files, and direct+transitive dependencies.
-2. `coursierapi.Fetch` (from `io.get-coursier:interface`) downloads all transitive JARs for both the compiler and library dependencies. No `cs` CLI needed — resolution happens in-process.
-3. For each JAR, the adjacent POM is found in the Coursier cache. Parent POMs are discovered by walking the `<parent>` chain using regex. SHA-256 hashes are computed in-process via `java.security.MessageDigest` — no `nix hash file` needed.
-4. The output is `scala.lock.json`.
+1. Source files are scanned for `//> using platform` and `//> using scala` directives to discover the build matrix. Defaults: platform `jvm`, Scala version from source directives (or scala-cli's default).
+2. For each target in the matrix, `scala-cli export --json --platform <p> --scala-version <v> <inputs>` discovers the Scala version, source files, and direct+transitive dependencies.
+3. `coursierapi.Fetch` (from `io.get-coursier:interface`) downloads all transitive JARs for both the compiler and library dependencies. No `cs` CLI needed — resolution happens in-process.
+4. For each JAR, the adjacent POM is found in the Coursier cache. Parent POMs are discovered by walking the `<parent>` chain using regex. SHA-256 hashes are computed in-process via `java.security.MessageDigest` — no `nix hash file` needed.
+5. The output is `scala.lock.json` with one section per target.
 
-#### Lockfile format (`scala.lock.json`)
+#### Lockfile format (`scala.lock.json`, version 6)
 
+The lockfile uses a multi-target format. Each target (a platform/Scala version combination) has its own section under the `targets` key.
+
+**Cross-platform example** (1 Scala version, 2 platforms):
 ```json
 {
-  "version": 5,
-  "scalaVersion": "3.8.3",
-  "platform": "JVM",
-  "exportHash": "<sha1 of sorted scala-cli export JSON>",
-  "sources": ["foo.scala"],
-  "compiler": [
-    {"url": "https://repo1.maven.org/...", "sha256": "base64..."},
-    ...
-  ],
-  "libraryDependencies": [
-    {"url": "https://repo1.maven.org/...", "sha256": "base64..."},
-    ...
-  ],
-  "native": {
-    "compilerPlugins": [...],
-    "runtimeDependencies": [...],
-    "toolingDependencies": [...]
+  "version": 6,
+  "sources": ["hello.scala"],
+  "targets": {
+    "jvm": {
+      "scalaVersion": "3.6.4",
+      "platform": "JVM",
+      "exportHash": "<sha1>",
+      "compiler": [{"url": "...", "sha256": "base64..."}],
+      "libraryDependencies": [{"url": "...", "sha256": "base64..."}]
+    },
+    "native": {
+      "scalaVersion": "3.6.4",
+      "platform": "Native",
+      "exportHash": "<sha1>",
+      "compiler": [...],
+      "libraryDependencies": [...],
+      "native": {
+        "scalaNativeVersion": "0.5.10",
+        "compilerPlugins": [...],
+        "runtimeDependencies": [...],
+        "toolingDependencies": [...]
+      }
+    }
   }
 }
 ```
 
-- `version` is checked at build time — `lib.nix` rejects lockfiles that don't match version 5. This prevents confusing errors when the lockfile format changes.
-- `platform` is `"JVM"` or `"Native"`. Determines the build strategy (JVM wrapper vs native binary).
-- `compiler` and `libraryDependencies` contain JARs, their POMs, and any parent POMs referenced by those POMs. Parent POMs are needed because Coursier resolves version inheritance from parent POMs during offline resolution (e.g., `jline-reader` inherits version numbers from `jline-parent`).
-- `native` is present for Scala Native projects. Its three sub-fields (`compilerPlugins`, `runtimeDependencies`, `toolingDependencies`) are resolved independently because they target different Scala versions (e.g., `scala-native-cli` uses Scala 2.12, while runtime deps use the project's Scala version). All three are needed in the Coursier cache for `scala-cli package --offline` to link a native binary.
-- `sources` lists the source files relative to the project root.
-- `exportHash` is a SHA-1 hex digest of the canonicalized (sorted keys, 2-space indent) `scala-cli export --json` output followed by a newline. The lock command uses this to detect staleness — if the hash matches, it skips re-locking.
+**Single-target example** (standard JVM project):
+```json
+{
+  "version": 6,
+  "sources": ["foo.scala"],
+  "targets": {
+    "jvm": {
+      "scalaVersion": "3.8.3",
+      "platform": "JVM",
+      "exportHash": "<sha1>",
+      "compiler": [...],
+      "libraryDependencies": [...]
+    }
+  }
+}
+```
+
+##### Target key naming
+
+Target keys use only the dimensions that vary:
+
+| Platforms | Scala versions | Key format | Example |
+|---|---|---|---|
+| 1 | 1 | `<platform>` | `jvm` |
+| many | 1 | `<platform>` | `jvm`, `native` |
+| 1 | many | `<version>` | `3.6.4`, `3.5.0` |
+| many | many | `<platform>-<version>` | `jvm-3.6.4`, `native-3.5.0` |
+
+##### Field reference
+
+- `version` — schema version (6). Checked at build time; mismatch causes a build error directing the user to re-lock.
+- `sources` — top-level, shared across targets. Lists source files relative to the project root.
+- `targets.<key>.exportHash` — SHA-1 hex digest of the canonicalized (sorted keys, no spaces) `scala-cli export --json` output for this target, followed by a newline. Used for per-target staleness detection.
+- `targets.<key>.platform` — `"JVM"` or `"Native"`. Determines the build strategy.
+- `targets.<key>.compiler` / `libraryDependencies` — JARs, their POMs, and parent POMs. Parent POMs are needed because Coursier resolves version inheritance from parent POMs during offline resolution.
+- `targets.<key>.native` — present for Scala Native targets. Its three sub-fields (`compilerPlugins`, `runtimeDependencies`, `toolingDependencies`) are resolved independently because tooling dependencies target Scala 2.12, while the others use the project's Scala version.
 
 #### Coursier cache path structure
 
@@ -65,14 +105,21 @@ The lock script reconstructs URLs by stripping the cache prefix and re-adding `:
 
 ### Phase 2: Building (`lib.nix`)
 
-`lib.nix` exposes `buildScalaCliApp { pname, version, src, lockFile, mainClass? }`. The `mainClass` parameter is only needed when the project has multiple main classes — otherwise it is discovered automatically at build time. The build strategy depends on the `platform` field in the lockfile.
+`lib.nix` exposes two functions:
+
+- `buildScalaCliApp { pname, version, src, lockFile, mainClass?, target? }` — builds a single target, returning one derivation. If the lockfile has multiple targets, `target` must be specified (e.g. `target = "jvm"`). If the lockfile has exactly one target, it is selected automatically.
+- `buildScalaCliApps { pname, version, src, lockFile, mainClass? }` — builds all targets, returning an attrset of derivations keyed by target name (dots normalized to underscores, e.g. `{ jvm = <drv>; native = <drv>; }`).
+
+The `mainClass` parameter (JVM only) is only needed when the project has multiple main classes — otherwise it is discovered automatically at build time.
+
+Both functions pass `--platform` and `--scala-version` flags to `scala-cli package` so that multi-platform sources are compiled for the correct target.
 
 #### JVM builds
 
 1. **Per-artifact FODs**: Each `{url, sha256}` entry becomes a `builtins.fetchurl` call. Each is its own Fixed-Output Derivation in the Nix store — updating one dependency only re-downloads that one JAR.
 2. **Source filtering**: The `src` is filtered using `lib.cleanSourceWith` to only include files listed in the lockfile's `sources` array. This means changes to unrelated files (e.g. `README.md`, `flake.nix`) don't trigger a rebuild.
 3. **Deps cache**: All fetched artifacts are symlinked into a Coursier-compatible cache layout (`mkCacheDir`). This is set as `COURSIER_CACHE` so `scala-cli --offline` can resolve dependencies.
-4. **Compilation**: `scala-cli --power package <sources> --server=false --offline --library` compiles user code into a small JAR (~4KB) containing only the compiled classes, no bundled dependencies.
+4. **Compilation**: `scala-cli --power package <sources> --server=false --offline --library --platform jvm --scala-version <v>` compiles user code into a small JAR (~4KB) containing only the compiled classes, no bundled dependencies.
 5. **Main class discovery**: Unless `mainClass` is explicitly passed, `scala-cli --power run --main-class-list <sources> --server=false --offline` is run inside the sandbox to find the main class. If there isn't exactly one, the build fails with an error asking the user to pass `mainClass` explicitly.
 6. **Wrapper**: `makeWrapper` creates an executable that runs `java -cp <all library JARs>:<compiled JAR> <mainClass>`. The classpath references individual Nix store paths — no duplication, each dep independently cacheable.
 
@@ -81,7 +128,7 @@ The lock script reconstructs URLs by stripping the cache prefix and re-adding `:
 For Scala Native (`platform: "Native"`), the build is simpler but the dependency set is larger:
 
 1. **Deps cache**: Compiler, library, and all three native dependency groups (compiler plugins, runtime, tooling) are symlinked into the Coursier cache. The `+` character in artifact versions (e.g., `3.6.4+0.5.10`) is percent-encoded to `%2B` to match Coursier's cache layout.
-2. **Compilation + linking**: `scala-cli --power package <sources> --server=false --offline` compiles and links everything into a single native executable. No `--library` flag — the entire app is linked into one binary.
+2. **Compilation + linking**: `scala-cli --power package <sources> --server=false --offline --platform scala-native --scala-version <v>` compiles and links everything into a single native executable. No `--library` flag — the entire app is linked into one binary.
 3. **No wrapper**: The output is a native binary, copied directly to `$out/bin`. No JVM or classpath needed at runtime.
 4. **Extra build inputs**: `clang` and `which` are needed for the native linking step.
 
@@ -91,6 +138,8 @@ For Scala Native (`platform: "Native"`), the build is simpler but the dependency
 - `--server=false`: disables Bloop compilation server (can't run in sandbox).
 - `--offline`: prevents any network access attempts.
 - `--power`: required to use `--library`.
+- `--platform jvm|scala-native`: selects the target platform. Always passed, even for single-target projects.
+- `--scala-version <v>`: pins the Scala version. Always passed.
 
 Sandbox environment variables set in the derivation:
 - `COURSIER_CACHE` → the symlinked cache dir
@@ -106,7 +155,7 @@ The overlay provides four packages:
 
 | Package | Description |
 |---|---|
-| `scala-cli-nix` | The build library (`buildScalaCliApp`) |
+| `scala-cli-nix` | The build library (`buildScalaCliApp` and `buildScalaCliApps`) |
 | `real-scala-cli` | Thin wrapper around the upstream `scala-cli`, used to avoid recursion |
 | `scala-cli-nix-cli` | The `scala-cli-nix` CLI (init/lock commands), built by `buildScalaCliApp` itself (self-hosting) |
 | `scala-cli` | Wrapped scala-cli that auto-locks before forwarding |
@@ -124,7 +173,7 @@ The wrapper strips the scala-cli subcommand (e.g. `run`, `test`) from the argume
 ### `scala-cli-nix init`
 
 Scaffolds a new project:
-- `derivation.nix` — callPackage-shaped, calls `buildScalaCliApp`
+- `derivation.nix` — callPackage-shaped, calls `buildScalaCliApp` for single-target projects or `buildScalaCliApps` for cross-platform/cross-version projects (detected by parsing `//> using platform` and `//> using scala` directives)
 - `flake.nix` — full flake with overlay, packages, and devShell (or prints instructions if flake.nix already exists)
 - `scala.lock.json` — generated via `lock`
 
@@ -136,7 +185,7 @@ The generated flake uses the overlay pattern so consumers just do `pkgs.callPack
 
 ```
 flake.nix              # Flake: overlay, packages, checks
-lib.nix                # buildScalaCliApp Nix function
+lib.nix                # buildScalaCliApp / buildScalaCliApps Nix functions
 scala-cli-wrapper.sh   # Auto-locking wrapper, used via writeShellApplication
 cli/
   scala-cli-nix.scala  # CLI tool (init/lock), built by buildScalaCliApp
@@ -146,6 +195,8 @@ examples/
   scala3/              # Scala 3 example (cats-effect hello world)
   scala2/              # Scala 2 example (os-lib hello world)
   scala-native/        # Scala Native example (hello world)
+  scala-native-ce/     # Scala Native + cats-effect example
+  scala-native-ce-cross/  # Cross JVM+Native example (cats-effect)
 ```
 
 ### Running checks
@@ -154,7 +205,7 @@ examples/
 nix flake check --print-build-logs
 ```
 
-This builds both example apps (Scala 2 and 3) and verifies their output.
+This builds all example apps (Scala 2, Scala 3, Scala Native, Native+CE, and the cross JVM/Native example) and verifies their output.
 
 ### Shell scripts and shellcheck
 

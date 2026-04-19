@@ -66,6 +66,7 @@
           example-scala2 = pkgs.callPackage ./examples/scala2/derivation.nix { };
           example-scala-native = pkgs.callPackage ./examples/scala-native/derivation.nix { };
           example-scala-native-ce = pkgs.callPackage ./examples/scala-native-ce/derivation.nix { };
+          example-scala-native-ce-cross = pkgs.callPackage ./examples/scala-native-ce-cross/derivation.nix { };
         in {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)
@@ -104,6 +105,26 @@
               touch $out
             else
               echo "FAIL: expected 'hello from scala native with cats-effect!', got '$output'"
+              exit 1
+            fi
+          '';
+          example-scala-native-ce-cross-jvm = pkgs.runCommand "check-example-scala-native-ce-cross-jvm" { } ''
+            output=$(${example-scala-native-ce-cross.jvm}/bin/example-scala-native-ce-cross)
+            if [ "$output" = "hello from scala jvm/native with cats-effect!" ]; then
+              echo "OK: example-scala-native-ce-cross-jvm output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello from scala jvm/native with cats-effect!', got '$output'"
+              exit 1
+            fi
+          '';
+          example-scala-native-ce-cross-native = pkgs.runCommand "check-example-scala-native-ce-cross-native" { } ''
+            output=$(${example-scala-native-ce-cross.native}/bin/example-scala-native-ce-cross)
+            if [ "$output" = "hello from scala jvm/native with cats-effect!" ]; then
+              echo "OK: example-scala-native-ce-cross-native output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello from scala jvm/native with cats-effect!', got '$output'"
               exit 1
             fi
           '';

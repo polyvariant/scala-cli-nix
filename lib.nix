@@ -1,6 +1,8 @@
 { scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib, clang, which }:
 let
-  supportedVersion = 5;
+  supportedVersion = 6;
+
+  fetchAll = deps: builtins.map (dep: { inherit dep; path = builtins.fetchurl dep; }) deps;
 
   fetchDeps = lockFile:
     let
@@ -10,17 +12,21 @@ let
         if lockVersion != supportedVersion
         then builtins.throw "scala-cli-nix: unsupported lockfile version ${builtins.toString lockVersion} (expected ${builtins.toString supportedVersion}). Re-run 'scala-cli-nix lock' to regenerate."
         else true;
-      fetchAll = deps: builtins.map (dep: { inherit dep; path = builtins.fetchurl dep; }) deps;
-      native = json.native or null;
+      native = target: target.native or null;
     in assert versionCheck; {
-      inherit json native;
-      platform = json.platform or "JVM";
-      # Each builtins.fetchurl is its own FOD — per-artifact granularity
-      compiler = fetchAll json.compiler;
-      libraryDependencies = fetchAll json.libraryDependencies;
-      nativeCompilerPlugins = if native != null then fetchAll native.compilerPlugins else [];
-      nativeRuntimeDependencies = if native != null then fetchAll native.runtimeDependencies else [];
-      nativeToolingDependencies = if native != null then fetchAll native.toolingDependencies else [];
+      sources = json.sources or [];
+      targets = builtins.mapAttrs (name: target:
+        let n = native target;
+        in {
+          inherit (target) platform scalaVersion;
+          # Each builtins.fetchurl is its own FOD — per-artifact granularity
+          compiler = fetchAll target.compiler;
+          libraryDependencies = fetchAll target.libraryDependencies;
+          nativeCompilerPlugins = if n != null then fetchAll n.compilerPlugins else [];
+          nativeRuntimeDependencies = if n != null then fetchAll n.runtimeDependencies else [];
+          nativeToolingDependencies = if n != null then fetchAll n.toolingDependencies else [];
+        }
+      ) json.targets;
     };
 
   # Build a Coursier-compatible cache directory from fetched deps
@@ -39,11 +45,10 @@ let
     in runCommand name {} (builtins.concatStringsSep "\n" linkCommands);
 
   # Common source filtering and args, shared by JVM and Native builders
-  prepareSources = fetched: src:
+  prepareSources = sources: src:
     let
-      sources = fetched.json.sources or null;
       filteredSrc =
-        if sources != null
+        if sources != []
         then lib.cleanSourceWith {
           src = src;
           filter = path: type:
@@ -54,14 +59,18 @@ let
         }
         else src;
       sourceArgs =
-        if sources != null
+        if sources != []
         then builtins.concatStringsSep " " (builtins.map (s: "${filteredSrc}/${s}") sources)
         else "${filteredSrc}";
     in { inherit filteredSrc sourceArgs; };
 
-  buildJvmApp = { pname, version, src, fetched, mainClass }:
+  # Map lockfile platform name to --platform flag value
+  platformFlag = platform:
+    if platform == "Native" then "scala-native" else "jvm";
+
+  buildJvmApp = { pname, version, src, sources, fetched, mainClass }:
     let
-      inherit (prepareSources fetched src) sourceArgs;
+      inherit (prepareSources sources src) sourceArgs;
       allDeps = fetched.compiler ++ fetched.libraryDependencies;
       depsCache = mkCacheDir "scala-cli-deps-${pname}" allDeps;
 
@@ -83,9 +92,14 @@ let
           export SCALA_CLI_HOME=$TMPDIR/scala-cli-home
           mkdir -p $HOME $COURSIER_ARCHIVE_CACHE $SCALA_CLI_HOME
 
-          scala-cli --power package ${sourceArgs} --server=false --offline --library -o $out/share/${pname}.jar
+          scala-cli --power package ${sourceArgs} --server=false --offline --library \
+            --platform ${platformFlag fetched.platform} \
+            --scala-version ${fetched.scalaVersion} \
+            -o $out/share/${pname}.jar
         '' + lib.optionalString (mainClass == null) ''
-          MAIN_CLASSES=$(scala-cli --power run --main-class-list ${sourceArgs} --server=false --offline)
+          MAIN_CLASSES=$(scala-cli --power run --main-class-list ${sourceArgs} --server=false --offline \
+            --platform ${platformFlag fetched.platform} \
+            --scala-version ${fetched.scalaVersion})
           MAIN_CLASS_COUNT=$(echo "$MAIN_CLASSES" | wc -l)
           if [ "$MAIN_CLASS_COUNT" -ne 1 ]; then
             echo "error: found $MAIN_CLASS_COUNT main classes, expected exactly 1:"
@@ -114,9 +128,9 @@ let
       '';
     };
 
-  buildNativeApp = { pname, version, src, fetched }:
+  buildNativeApp = { pname, version, src, sources, fetched }:
     let
-      inherit (prepareSources fetched src) sourceArgs;
+      inherit (prepareSources sources src) sourceArgs;
       allDeps = fetched.compiler ++ fetched.libraryDependencies
         ++ fetched.nativeCompilerPlugins ++ fetched.nativeRuntimeDependencies ++ fetched.nativeToolingDependencies;
       depsCache = mkCacheDir "scala-cli-deps-${pname}" allDeps;
@@ -133,16 +147,56 @@ let
         export SCALA_CLI_HOME=$TMPDIR/scala-cli-home
         mkdir -p $HOME $COURSIER_ARCHIVE_CACHE $SCALA_CLI_HOME $out/bin
 
-        scala-cli --power package ${sourceArgs} --server=false --offline -o $out/bin/${pname}
+        scala-cli --power package ${sourceArgs} --server=false --offline \
+          --platform ${platformFlag fetched.platform} \
+          --scala-version ${fetched.scalaVersion} \
+          -o $out/bin/${pname}
       '';
       installPhase = "true";
     };
 
+  buildTarget = { pname, version, src, sources, targetFetched, mainClass ? null }:
+    if targetFetched.platform == "Native"
+    then buildNativeApp { inherit pname version src sources; fetched = targetFetched; }
+    else buildJvmApp { inherit pname version src sources mainClass; fetched = targetFetched; };
+
+  # Normalize dots to underscores for Nix attribute name ergonomics
+  nixKey = key: builtins.replaceStrings [ "." ] [ "_" ] key;
+
 in {
-  buildScalaCliApp = { pname, version, src, lockFile, mainClass ? null }:
+  # Build all targets from a lockfile, returning an attrset keyed by target name
+  # e.g. { jvm = <drv>; native = <drv>; } or { jvm-3_6_4 = <drv>; native-3_6_4 = <drv>; }
+  buildScalaCliApps = { pname, version, src, lockFile, mainClass ? null }:
     let
       fetched = fetchDeps lockFile;
-    in if fetched.platform == "Native"
-      then buildNativeApp { inherit pname version src fetched; }
-      else buildJvmApp { inherit pname version src fetched mainClass; };
+    in builtins.listToAttrs (
+      builtins.map (key:
+        { name = nixKey key;
+          value = buildTarget {
+            inherit pname version src mainClass;
+            sources = fetched.sources;
+            targetFetched = fetched.targets.${key};
+          };
+        }
+      ) (builtins.attrNames fetched.targets)
+    );
+
+  # Build a single target from a lockfile.
+  # If the lockfile has exactly one target, builds it.
+  # If it has multiple targets, `target` must be specified (e.g. target = "jvm").
+  buildScalaCliApp = { pname, version, src, lockFile, mainClass ? null, target ? null }:
+    let
+      fetched = fetchDeps lockFile;
+      targetNames = builtins.attrNames fetched.targets;
+      resolvedTarget =
+        if target != null
+        then target
+        else if builtins.length targetNames == 1
+        then builtins.head targetNames
+        else builtins.throw "scala-cli-nix: lockfile has multiple targets (${builtins.concatStringsSep ", " targetNames}). Pass `target` to buildScalaCliApp or use buildScalaCliApps.";
+    in buildTarget {
+      inherit pname version src mainClass;
+      sources = fetched.sources;
+      targetFetched = fetched.targets.${resolvedTarget};
+    };
 }

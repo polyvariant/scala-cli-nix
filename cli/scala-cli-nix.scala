@@ -1,11 +1,11 @@
 //> using scala 3.8.3
 //> using scalacOption -no-indent
 //> using dep io.get-coursier:interface:1.0.29-M3
-//> using dep io.circe::circe-generic:0.14.15
-//> using dep io.circe::circe-parser:0.14.15
-//> using dep org.typelevel::cats-effect:3.7.0
-//> using dep co.fs2::fs2-io:3.13.0
-//> using dep com.github.alexarchambault::case-app:2.1.0
+//> using dep io.circe::circe-generic::0.14.15
+//> using dep io.circe::circe-parser::0.14.15
+//> using dep org.typelevel::cats-effect::3.7.0
+//> using dep co.fs2::fs2-io::3.13.0
+//> using dep com.github.alexarchambault::case-app::2.1.0
 
 import cats.effect.ExitCode
 import cats.effect.IO
@@ -38,15 +38,19 @@ case class NativeLockDeps(
     toolingDependencies: List[ArtifactEntry]
 ) derives Codec.AsObject
 
-case class LockFile(
-    version: Int,
+case class TargetLock(
     scalaVersion: String,
     platform: String,
     exportHash: String,
-    sources: List[String],
     compiler: List[ArtifactEntry],
     libraryDependencies: List[ArtifactEntry],
     native: Option[NativeLockDeps]
+) derives Codec.AsObject
+
+case class LockFile(
+    version: Int,
+    sources: List[String],
+    targets: Map[String, TargetLock]
 ) derives Codec.AsObject
 
 // --- JSON model (scala-cli export, only the fields we use) ---
@@ -284,6 +288,103 @@ val resolveScalaCli: IO[String] =
     case _ => "scala-cli"
   }
 
+// --- Directive parsing ---
+
+/** A cross-build target: one (platform, scalaVersion) combination. */
+case class Target(platform: String, scalaVersion: Option[String]) {
+  /** Platform name for the --platform flag (jvm -> jvm, native -> scala-native). */
+  def platformFlag: String = platform match {
+    case "native" => "scala-native"
+    case other    => other
+  }
+
+  /** Platform name stored in the lockfile (jvm -> JVM, native -> Native). */
+  def platformLock: String = platform match {
+    case "native" => "Native"
+    case _        => "JVM"
+  }
+}
+
+/** Pure directive extraction from source lines.
+ *  Returns (platforms, scalaVersions). Defaults: platforms=["jvm"], scalaVersions=[None].
+ */
+def parseDirectivesFromLines(
+    lines: List[String]
+): (List[String], List[Option[String]]) = {
+  val platformPattern = "^//>\\s+using\\s+platforms?\\s+(.+)$".r
+  val platforms = lines
+    .collect {
+      case line if platformPattern.findFirstMatchIn(line.trim).isDefined =>
+        platformPattern.findFirstMatchIn(line.trim).get.group(1).trim.split("\\s+").toList
+    }
+    .flatten
+    .map {
+      case "scala-native" => "native"
+      case other          => other
+    }
+    .distinct
+
+  val scalaVersions = lines
+    .collect {
+      case line
+          if line.trim.startsWith("//> using scala ") &&
+            !line.trim.startsWith("//> using scalac") &&
+            !line.trim.startsWith("//> using scalafix") =>
+        line.trim.stripPrefix("//> using scala").trim.split("\\s+").toList
+    }
+    .flatten
+    .distinct
+
+  val resolvedPlatforms =
+    if (platforms.isEmpty) List("jvm") else platforms
+  val resolvedVersions: List[Option[String]] =
+    if (scalaVersions.isEmpty) List(None)
+    else scalaVersions.map(Some(_))
+
+  (resolvedPlatforms, resolvedVersions)
+}
+
+/**
+ * Parse //> using platform[s] and //> using scala directives from Scala source files.
+ * Returns (platforms, scalaVersions). Defaults: platforms=["jvm"], scalaVersions=[None].
+ */
+def parseDirectives(
+    inputArgs: List[String],
+    cwd: Path
+): IO[(List[String], List[Option[String]])] = {
+  val sourcePaths: fs2.Stream[IO, Path] =
+    if (inputArgs == List(".") || inputArgs.isEmpty)
+      Files[IO].list(cwd).filter(_.extName == ".scala")
+    else
+      fs2.Stream.emits(inputArgs.map { arg =>
+        if (arg.endsWith(".scala")) cwd / arg else cwd / (arg + ".scala")
+      })
+
+  sourcePaths
+    .evalMap(readFile)
+    .compile
+    .toList
+    .map { contents =>
+      parseDirectivesFromLines(contents.flatMap(_.linesIterator.toList))
+    }
+}
+
+/** Compute the lock key for a target given the full set of platforms and versions. */
+def targetKey(
+    target: Target,
+    allPlatforms: List[String],
+    allVersions: List[Option[String]]
+): String = {
+  val multiPlatform = allPlatforms.size > 1
+  val multiVersion = allVersions.size > 1
+  (multiPlatform, multiVersion) match {
+    case (true, true)  => s"${target.platform}-${target.scalaVersion.getOrElse("default")}"
+    case (true, false) => target.platform
+    case (false, true) => target.scalaVersion.getOrElse("default")
+    case (false, false) => target.platform
+  }
+}
+
 // --- Option case classes ---
 
 case class LockOptions()
@@ -295,88 +396,108 @@ val hashPrinter: Printer = Printer.noSpaces.copy(sortKeys = true)
 val lockfilePrinter: Printer =
   Printer.spaces2.copy(sortKeys = true, colonLeft = "", dropNullValues = true)
 
-/** Compute lockfile content without writing it. Returns None if up to date. */
-def computeLock(inputs: List[String]): IO[Option[String]] = {
+/** Compute lockfile content without writing it. Always recomputes from scratch. */
+def computeLock(inputs: List[String]): IO[String] = {
   val inputArgs = if (inputs.isEmpty) List(".") else inputs
 
   for {
     scalaCli <- resolveScalaCli
     cwd <- Files[IO].currentWorkingDirectory
-    lockfilePath = cwd / "scala.lock.json"
 
-    _ <- step("Exporting project info...")
-    exportJson <- exec(
-      scalaCli,
-      ("--power" :: "export" :: "--json" :: "--server=false" :: "--offline" :: inputArgs)*
+    (allPlatforms, allVersions) <- parseDirectives(inputArgs, cwd)
+    targets = for {
+      platform <- allPlatforms
+      version  <- allVersions
+    } yield Target(platform, version)
+
+    _ <- info(
+      s"Targets: ${C.bold}${targets.map(t => targetKey(t, allPlatforms, allVersions)).mkString(", ")}${C.reset}"
     )
 
+    // Read sources once from any target's export (they're shared across targets, at least for now that's the assumption)
+    _ <- step("Discovering sources...")
+    firstTarget = targets.head
+    firstExportJson <- exec(
+      scalaCli,
+      ("--power" :: "export" :: "--json" :: "--server=false" :: "--offline" ::
+        "--platform" :: firstTarget.platformFlag ::
+        firstTarget.scalaVersion.toList.flatMap(v => List("--scala-version", v)) ++
+        inputArgs)*
+    )
+    firstExport <- IO.fromEither(
+      parseJson(firstExportJson)
+        .flatMap(_.as[ExportInfo])
+        .leftMap(e => new RuntimeException(s"Failed to parse export JSON: ${e.getMessage}"))
+    )
+    sources = {
+      val mainScope = firstExport.scopes.getOrElse("main", ExportScope(Nil, Nil))
+      mainScope.sources.map { s =>
+        s.stripPrefix(cwd.toString + "/")
+          .stripPrefix("/private" + cwd.toString + "/")
+      }
+    }
+
+    targetLocks <- targets.traverse { target =>
+      val key = targetKey(target, allPlatforms, allVersions)
+      computeTargetLock(scalaCli, inputArgs, cwd, target, key).map(key -> _)
+    }
+
+    lockFile = LockFile(
+      version = 6,
+      sources = sources,
+      targets = targetLocks.toMap
+    )
+  } yield lockfilePrinter.print(lockFile.asJson) + "\n"
+}
+
+private def computeTargetLock(
+    scalaCli: String,
+    inputArgs: List[String],
+    cwd: Path,
+    target: Target,
+    key: String
+): IO[TargetLock] = {
+  val versionArgs =
+    target.scalaVersion.toList.flatMap(v => List("--scala-version", v))
+  val exportArgs =
+    "--power" :: "export" :: "--json" :: "--server=false" :: "--offline" ::
+      "--platform" :: target.platformFlag :: versionArgs ++ inputArgs
+
+  for {
+    _ <- step(s"Exporting target ${C.bold}$key${C.reset}...")
+    exportJson <- exec(scalaCli, exportArgs*)
     rawJson <- IO.fromEither(
       parseJson(exportJson).leftMap(e =>
         new RuntimeException(s"Failed to parse export JSON: ${e.message}")
       )
     )
-    canonicalExport = hashPrinter.print(rawJson)
-    exportHash = sha1Hex(canonicalExport + "\n")
-
-    lockExists <- Files[IO].exists(lockfilePath)
-    isUpToDate <-
-      if (lockExists)
-        readFile(lockfilePath).map { content =>
-          parseJson(content).toOption
-            .flatMap(_.hcursor.get[String]("exportHash").toOption)
-            .contains(exportHash)
-        }
-      else
-        IO.pure(false)
-
-    result <-
-      if (isUpToDate)
-        info("Lock is up to date.").as(None)
-      else {
-        val exportInfo = rawJson
-          .as[ExportInfo]
-          .leftMap(e =>
-            new RuntimeException(s"Failed to decode export JSON: ${e.message}")
-          )
-        IO.fromEither(exportInfo)
-          .flatMap(computeLockContent(scalaCli, inputArgs, _, exportHash, cwd))
-          .map(Some(_))
-      }
+    exportHash = sha1Hex(hashPrinter.print(rawJson) + "\n")
+    export_ <- IO.fromEither(
+      rawJson
+        .as[ExportInfo]
+        .leftMap(e =>
+          new RuntimeException(s"Failed to decode export JSON: ${e.message}")
+        )
+    )
+    result <- computeTargetLockContent(scalaCli, inputArgs, cwd, target, key, export_, exportHash)
   } yield result
 }
 
-def lock(inputs: List[String]): IO[ExitCode] =
-  computeLock(inputs).flatMap {
-    case None          => IO.pure(ExitCode.Success)
-    case Some(content) =>
-      for {
-        cwd <- Files[IO].currentWorkingDirectory
-        _ <- step("Writing lockfile...")
-        _ <- writeFile(cwd / "scala.lock.json", content)
-        _ <- success(s"Wrote ${C.bold}scala.lock.json${C.reset}")
-      } yield ExitCode.Success
-  }
-
-private def computeLockContent(
+private def computeTargetLockContent(
     scalaCli: String,
     inputArgs: List[String],
+    cwd: Path,
+    target: Target,
+    key: String,
     export_ : ExportInfo,
-    exportHash: String,
-    cwd: Path
-): IO[String] = {
+    exportHash: String
+): IO[TargetLock] = {
   val scalaVersion = export_.scalaVersion
-  val platform = export_.platform.getOrElse("JVM")
+  val scalaMajor = scalaVersion.takeWhile(_ != '.')
   val mainScope = export_.scopes.getOrElse("main", ExportScope(Nil, Nil))
-  val sources = mainScope.sources.map { s =>
-    s
-      .stripPrefix(cwd.toString + "/")
-      .stripPrefix("/private" + cwd.toString + "/")
-  }
   val deps = mainScope.dependencies.map { d =>
     s"${d.groupId}:${d.artifactId.fullName}:${d.version}"
   }
-
-  val scalaMajor = scalaVersion.takeWhile(_ != '.')
 
   scalaMajor match {
     case "3" | "2" =>
@@ -398,8 +519,7 @@ private def computeLockContent(
 
       for {
         _ <- info(s"Scala version: ${C.bold}$scalaVersion${C.reset}")
-        _ <- info(s"Platform: ${C.bold}$platform${C.reset}")
-        _ <- info(s"Sources: ${C.bold}${sources.size}${C.reset} files")
+        _ <- info(s"Platform: ${C.bold}${target.platformLock}${C.reset}")
         _ <- info(s"Found ${C.bold}${deps.size}${C.reset} dependencies")
 
         _ <- step("Fetching compiler dependencies...")
@@ -440,18 +560,14 @@ private def computeLockContent(
         _ <- step("Hashing artifacts...")
         compilerEntries <- collectEntries(compilerArtifacts)
         libEntries <- collectEntries(libArtifacts)
-
-        lockFile = LockFile(
-          version = 5,
-          scalaVersion = scalaVersion,
-          platform = platform,
-          exportHash = exportHash,
-          sources = sources,
-          compiler = compilerEntries,
-          libraryDependencies = libEntries,
-          native = nativeLockDeps
-        )
-      } yield lockfilePrinter.print(lockFile.asJson) + "\n"
+      } yield TargetLock(
+        scalaVersion = scalaVersion,
+        platform = target.platformLock,
+        exportHash = exportHash,
+        compiler = compilerEntries,
+        libraryDependencies = libEntries,
+        native = nativeLockDeps
+      )
 
     case _ =>
       error(
@@ -464,6 +580,21 @@ private def computeLockContent(
         )
   }
 }
+
+def lock(inputs: List[String]): IO[ExitCode] =
+  for {
+    content         <- computeLock(inputs)
+    cwd             <- Files[IO].currentWorkingDirectory
+    lockfilePath    = cwd / "scala.lock.json"
+    existingContent <- Files[IO].exists(lockfilePath).ifM(readFile(lockfilePath), IO.pure(""))
+    _ <-
+      if (existingContent == content)
+        info("Lock is up to date.")
+      else
+        step("Writing lockfile...") *>
+          writeFile(lockfilePath, content) *>
+          success(s"Wrote ${C.bold}scala.lock.json${C.reset}")
+  } yield ExitCode.Success
 
 // --- Init command ---
 
@@ -500,19 +631,22 @@ private def doInit(cwd: Path): IO[ExitCode] = {
         warn("derivation.nix already exists, skipping.")
           .as((Nil, Nil))
       case false =>
-        val content =
-          s"""{ scala-cli-nix }:
-             |
-             |scala-cli-nix.buildScalaCliApp {
-             |  pname = "$pname";
-             |  version = "0.1.0";
-             |  src = ./.;
-             |  lockFile = ./scala.lock.json;
-             |}
-             |""".stripMargin
-        IO.pure(
+        parseDirectives(List("."), cwd).map { case (platforms, versions) =>
+          val isCross = platforms.size > 1 || versions.size > 1
+          val buildFn =
+            if (isCross) "buildScalaCliApps" else "buildScalaCliApp"
+          val content =
+            s"""{ scala-cli-nix }:
+               |
+               |scala-cli-nix.$buildFn {
+               |  pname = "$pname";
+               |  version = "0.1.0";
+               |  src = ./.;
+               |  lockFile = ./scala.lock.json;
+               |}
+               |""".stripMargin
           (List(cwd / "derivation.nix" -> content), List("derivation.nix"))
-        )
+        }
     }
 
   val prepareFlake: IO[(List[(Path, String)], List[String])] =
@@ -608,11 +742,8 @@ private def doInit(cwd: Path): IO[ExitCode] = {
     _ <- errln("")
     lockContent <- computeLock(Nil)
     pendingFiles =
-      derivation._1 ++ flake._1 ++ lockContent
-        .map(c => (cwd / "scala.lock.json") -> c)
-        .toList
-    fileNames = derivation._2 ++ flake._2 ++
-      lockContent.map(_ => "scala.lock.json").toList
+      derivation._1 ++ flake._1 ++ List((cwd / "scala.lock.json") -> lockContent)
+    fileNames = derivation._2 ++ flake._2 ++ List("scala.lock.json")
     _ <- step("Writing files...")
     _ <- pendingFiles.traverse_ { case (path, content) =>
       writeFile(path, content)
