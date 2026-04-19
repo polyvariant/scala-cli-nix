@@ -625,31 +625,27 @@ def init(inputs: List[String]): IO[ExitCode] =
 private def doInit(cwd: Path): IO[ExitCode] = {
   val pname = cwd.fileName.toString
 
-  val prepareDerivation: IO[(List[(Path, String)], List[String])] =
+  def prepareDerivation(isCross: Boolean): IO[(List[(Path, String)], List[String])] =
     Files[IO].exists(cwd / "derivation.nix").flatMap {
       case true =>
         warn("derivation.nix already exists, skipping.")
           .as((Nil, Nil))
       case false =>
-        parseDirectives(List("."), cwd).map { case (platforms, versions) =>
-          val isCross = platforms.size > 1 || versions.size > 1
-          val buildFn =
-            if (isCross) "buildScalaCliApps" else "buildScalaCliApp"
-          val content =
-            s"""{ scala-cli-nix }:
-               |
-               |scala-cli-nix.$buildFn {
-               |  pname = "$pname";
-               |  version = "0.1.0";
-               |  src = ./.;
-               |  lockFile = ./scala.lock.json;
-               |}
-               |""".stripMargin
-          (List(cwd / "derivation.nix" -> content), List("derivation.nix"))
-        }
+        val buildFn = if (isCross) "buildScalaCliApps" else "buildScalaCliApp"
+        val content =
+          s"""{ scala-cli-nix }:
+             |
+             |scala-cli-nix.$buildFn {
+             |  pname = "$pname";
+             |  version = "0.1.0";
+             |  src = ./.;
+             |  lockFile = ./scala.lock.json;
+             |}
+             |""".stripMargin
+        IO.pure((List(cwd / "derivation.nix" -> content), List("derivation.nix")))
     }
 
-  val prepareFlake: IO[(List[(Path, String)], List[String])] =
+  def prepareFlake(isCross: Boolean): IO[(List[(Path, String)], List[String])] =
     Files[IO].exists(cwd / "flake.nix").flatMap {
       case true =>
         errln("") *>
@@ -673,10 +669,14 @@ private def doInit(cwd: Path): IO[ExitCode] = {
           ) *>
           errln(s"    ${C.dim}};${C.reset}") *>
           errln("") *>
-          errln(s"  ${C.bold}3.${C.reset} Add the package:") *>
+          errln(s"  ${C.bold}3.${C.reset} Add the package(s):") *>
           errln("") *>
           errln(
-            s"    ${C.dim}packages.default = pkgs.callPackage ./derivation.nix { };${C.reset}"
+            if (isCross)
+              s"    ${C.dim}# buildScalaCliApps returns an attrset — flatten into packages:${C.reset}\n" +
+              s"    ${C.dim}pkgs.callPackage ./derivation.nix { }${C.reset}"
+            else
+              s"    ${C.dim}packages.default = pkgs.callPackage ./derivation.nix { };${C.reset}"
           ) *>
           errln("") *>
           errln(
@@ -687,47 +687,54 @@ private def doInit(cwd: Path): IO[ExitCode] = {
           errln(s"    ${C.dim}pkgs.scala-cli-nix-cli${C.reset}") *>
           errln("").as((Nil, Nil))
       case false =>
+        // For cross projects, flatten the attrset from buildScalaCliApps into named packages
+        // (e.g. packages.${system}.jvm, packages.${system}.native) — no default package.
+        val packagesBody =
+          if (isCross)
+            """|          pkgs.callPackage ./derivation.nix { }"""
+          else
+            """|          default = pkgs.callPackage ./derivation.nix { };"""
         val content =
-          """|{
-             |  inputs = {
-             |    nixpkgs.url = "github:NixOS/nixpkgs";
-             |    scala-cli-nix.url = "github:scala-nix/scala-cli-nix";
-             |    scala-cli-nix.inputs.nixpkgs.follows = "nixpkgs";
-             |  };
-             |
-             |  outputs = { nixpkgs, scala-cli-nix, ... }:
-             |    let
-             |      forAllSystems = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" ];
-             |    in {
-             |      packages = forAllSystems (system:
-             |        let
-             |          pkgs = import nixpkgs {
-             |            inherit system;
-             |            overlays = [ scala-cli-nix.overlays.default ];
-             |          };
-             |        in {
-             |          default = pkgs.callPackage ./derivation.nix { };
-             |        }
-             |      );
-             |
-             |      devShells = forAllSystems (system:
-             |        let
-             |          pkgs = import nixpkgs {
-             |            inherit system;
-             |            overlays = [ scala-cli-nix.overlays.default ];
-             |          };
-             |        in {
-             |          default = pkgs.mkShell {
-             |            buildInputs = [
-             |              pkgs.scala-cli
-             |              pkgs.scala-cli-nix-cli
-             |            ];
-             |          };
-             |        }
-             |      );
-             |    };
-             |}
-             |""".stripMargin
+          s"""|{
+              |  inputs = {
+              |    nixpkgs.url = "github:NixOS/nixpkgs";
+              |    scala-cli-nix.url = "github:scala-nix/scala-cli-nix";
+              |    scala-cli-nix.inputs.nixpkgs.follows = "nixpkgs";
+              |  };
+              |
+              |  outputs = { nixpkgs, scala-cli-nix, ... }:
+              |    let
+              |      forAllSystems = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" ];
+              |    in {
+              |      packages = forAllSystems (system:
+              |        let
+              |          pkgs = import nixpkgs {
+              |            inherit system;
+              |            overlays = [ scala-cli-nix.overlays.default ];
+              |          };
+              |        in {
+              |$packagesBody
+              |          }
+              |      );
+              |
+              |      devShells = forAllSystems (system:
+              |        let
+              |          pkgs = import nixpkgs {
+              |            inherit system;
+              |            overlays = [ scala-cli-nix.overlays.default ];
+              |          };
+              |        in {
+              |          default = pkgs.mkShell {
+              |            buildInputs = [
+              |              pkgs.scala-cli
+              |              pkgs.scala-cli-nix-cli
+              |            ];
+              |          };
+              |        }
+              |      );
+              |    };
+              |}
+              |""".stripMargin
         IO.pure((List(cwd / "flake.nix" -> content), List("flake.nix")))
     }
 
@@ -737,8 +744,10 @@ private def doInit(cwd: Path): IO[ExitCode] = {
       s"${C.bold}Initializing scala-cli-nix project: ${C.green}$pname${C.reset}"
     )
     _ <- errln("")
-    derivation <- prepareDerivation
-    flake <- prepareFlake
+    (platforms, versions) <- parseDirectives(Nil, cwd)
+    isCross = platforms.size > 1 || versions.size > 1
+    derivation <- prepareDerivation(isCross)
+    flake <- prepareFlake(isCross)
     _ <- errln("")
     lockContent <- computeLock(Nil)
     pendingFiles =
