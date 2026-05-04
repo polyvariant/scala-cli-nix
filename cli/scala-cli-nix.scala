@@ -129,22 +129,23 @@ def sha1Hex(s: String): String = {
 
 // --- Process helpers ---
 
-/** Run a process and capture stdout as a string. Stderr is inherited. */
+/** Run a process and capture stdout as a string. Stderr is forwarded to our
+  * stderr.
+  */
 def exec(command: String, args: String*): IO[String] =
   ProcessBuilder(command, args.toList)
     .spawn[IO]
     .use { proc =>
-      proc.stdout
-        .through(fs2.text.utf8.decode)
-        .compile
-        .string
-        .flatTap(_ =>
-          proc.exitValue.flatMap { code =>
-            IO.raiseError(
-              new RuntimeException(s"$command exited with code $code")
-            ).whenA(code != 0)
-          }
-        )
+      val stdout = proc.stdout.through(fs2.text.utf8.decode).compile.string
+      val stderr = proc.stderr.through(fs2.io.stderr[IO]).compile.drain
+      (stdout, stderr).parTupled.flatMap { case (out, _) =>
+        proc.exitValue.flatMap { code =>
+          IO.raiseError(
+            new RuntimeException(s"$command exited with code $code")
+          ).whenA(code != 0)
+            .as(out)
+        }
+      }
     }
 
 /** Run a process, discard output, return exit code. */
@@ -256,11 +257,10 @@ def collectParentPoms(pomPath: Path): IO[List[ArtifactEntry]] = {
 }
 
 /** Pure version of extractDeclaredDeps. Returns (groupId, artifactId, version)
- *  tuples for each <dependency> in the POM's <dependencies> section.
- *  Excludes deps inside <dependencyManagement>.
- *  May include unresolved property placeholders like ${project.version} —
- *  caller filters those out.
- */
+  * tuples for each <dependency> in the POM's <dependencies> section. Excludes
+  * deps inside <dependencyManagement>. May include unresolved property
+  * placeholders like ${project.version} — caller filters those out.
+  */
 def parseDeclaredDeps(pomContent: String): List[(String, String, String)] = {
   val withoutManagement =
     "(?s)<dependencyManagement>.*?</dependencyManagement>".r
@@ -274,7 +274,9 @@ def parseDeclaredDeps(pomContent: String): List[(String, String, String)] = {
     val body = m.group(1)
     for {
       g <- "<groupId>(.*?)</groupId>".r.findFirstMatchIn(body).map(_.group(1))
-      a <- "<artifactId>(.*?)</artifactId>".r.findFirstMatchIn(body).map(_.group(1))
+      a <- "<artifactId>(.*?)</artifactId>".r
+        .findFirstMatchIn(body)
+        .map(_.group(1))
       v <- "<version>(.*?)</version>".r.findFirstMatchIn(body).map(_.group(1))
     } yield (g, a, v)
   }
@@ -284,13 +286,14 @@ def extractDeclaredDeps(pomPath: Path): IO[List[(String, String, String)]] =
   readFile(pomPath).map(parseDeclaredDeps)
 
 /** Walk all resolved POMs to find declared deps and fetch their JAR + POM
- *  individually. This captures evicted versions that scala-cli may try to fetch
- *  during offline resolution.
- *
- *  Each declared dep is fetched as its own resolution. Unlike `withTransitive(false)`
- *  which fails on some artifacts in the Coursier interface, this works reliably.
- *  Failures are tolerated (e.g. for placeholder/marker artifacts).
- */
+  * individually. This captures evicted versions that scala-cli may try to fetch
+  * during offline resolution.
+  *
+  * Each declared dep is fetched as its own resolution. Unlike
+  * `withTransitive(false)` which fails on some artifacts in the Coursier
+  * interface, this works reliably. Failures are tolerated (e.g. for
+  * placeholder/marker artifacts).
+  */
 def collectDeclaredPoms(
     resolvedPomPaths: List[Path],
     resolvedUrls: Set[String]
@@ -314,8 +317,12 @@ def collectDeclaredPoms(
     }
   }
 
-/** Like collectEntries but does not recursively walk declared deps (avoids infinite loop). */
-def collectEntriesNoRecurse(artifacts: List[(Artifact, File)]): IO[List[ArtifactEntry]] =
+/** Like collectEntries but does not recursively walk declared deps (avoids
+  * infinite loop).
+  */
+def collectEntriesNoRecurse(
+    artifacts: List[(Artifact, File)]
+): IO[List[ArtifactEntry]] =
   artifacts
     .flatTraverse { (artifact, file) =>
       val url = artifact.getUrl
@@ -342,7 +349,9 @@ def collectEntriesNoRecurse(artifacts: List[(Artifact, File)]): IO[List[Artifact
     }
     .map(_.distinctBy(_.url))
 
-def collectEntries(artifacts: List[(Artifact, File)]): IO[List[ArtifactEntry]] = {
+def collectEntries(
+    artifacts: List[(Artifact, File)]
+): IO[List[ArtifactEntry]] = {
   val resolved: IO[(List[ArtifactEntry], List[Path])] =
     artifacts.foldLeftM((List.empty[ArtifactEntry], List.empty[Path])) {
       case ((entries, poms), (artifact, file)) =>
@@ -363,7 +372,10 @@ def collectEntries(artifacts: List[(Artifact, File)]): IO[List[ArtifactEntry]] =
               sha256Base64(pomPath).flatMap { pomHash =>
                 collectParentPoms(pomPath).map { parentEntries =>
                   val newEntries =
-                    jarEntry :: ArtifactEntry(pomUrl, pomHash) :: parentEntries ++ entries
+                    jarEntry :: ArtifactEntry(
+                      pomUrl,
+                      pomHash
+                    ) :: parentEntries ++ entries
                   (newEntries, pomPath :: poms)
                 }
               }
@@ -386,11 +398,14 @@ val resolveScalaCli: IO[String] =
     case _ => "scala-cli"
   }
 
-// --- Directive parsing ---
+// --- Target discovery ---
 
 /** A cross-build target: one (platform, scalaVersion) combination. */
 case class Target(platform: String, scalaVersion: Option[String]) {
-  /** Platform name for the --platform flag (jvm -> jvm, native -> scala-native). */
+
+  /** Platform name for the --platform flag (jvm -> jvm, native ->
+    * scala-native).
+    */
   def platformFlag: String = platform match {
     case "native" => "scala-native"
     case other    => other
@@ -403,82 +418,44 @@ case class Target(platform: String, scalaVersion: Option[String]) {
   }
 }
 
-/** Pure directive extraction from source lines.
- *  Returns (platforms, scalaVersions). Defaults: platforms=["jvm"], scalaVersions=[None].
- */
-def parseDirectivesFromLines(
-    lines: List[String]
-): (List[String], List[Option[String]]) = {
-  val platformPattern = "^//>\\s+using\\s+platforms?\\s+(.+)$".r
-  val platforms = lines
-    .collect {
-      case line if platformPattern.findFirstMatchIn(line.trim).isDefined =>
-        platformPattern.findFirstMatchIn(line.trim).get.group(1).trim.split("\\s+").toList
+/** One entry in the JSON output of `scala-cli --power list-targets`. */
+case class ListTargetEntry(platform: String, scalaVersion: Option[String])
+    derives Decoder
+
+/** Ask scala-cli for the full build matrix. The CLI emits one entry per
+  * declared (platform, scalaVersion) combination, so we don't have to parse
+  * `using` directives ourselves.
+  */
+def listTargets(scalaCli: String, inputArgs: List[String]): IO[List[Target]] =
+  exec(scalaCli, ("--power" :: "list-targets" :: inputArgs)*)
+    .flatMap { json =>
+      IO.fromEither(
+        parseJson(json)
+          .flatMap(_.as[List[ListTargetEntry]])
+          .leftMap(e =>
+            new RuntimeException(
+              s"Failed to parse list-targets JSON: ${e.getMessage}"
+            )
+          )
+      )
     }
-    .flatten
-    .map {
-      case "scala-native" => "native"
-      case other          => other
-    }
-    .distinct
+    .map(_.map { e =>
+      val platform = e.platform match {
+        case "Native" => "native"
+        case _        => "jvm"
+      }
+      Target(platform, e.scalaVersion)
+    })
 
-  val scalaVersions = lines
-    .collect {
-      case line
-          if line.trim.startsWith("//> using scala ") &&
-            !line.trim.startsWith("//> using scalac") &&
-            !line.trim.startsWith("//> using scalafix") =>
-        line.trim.stripPrefix("//> using scala").trim.split("\\s+").toList
-    }
-    .flatten
-    .distinct
-
-  val resolvedPlatforms =
-    if (platforms.isEmpty) List("jvm") else platforms
-  val resolvedVersions: List[Option[String]] =
-    if (scalaVersions.isEmpty) List(None)
-    else scalaVersions.map(Some(_))
-
-  (resolvedPlatforms, resolvedVersions)
-}
-
-/**
- * Parse //> using platform[s] and //> using scala directives from Scala source files.
- * Returns (platforms, scalaVersions). Defaults: platforms=["jvm"], scalaVersions=[None].
- */
-def parseDirectives(
-    inputArgs: List[String],
-    cwd: Path
-): IO[(List[String], List[Option[String]])] = {
-  val sourcePaths: fs2.Stream[IO, Path] =
-    if (inputArgs == List(".") || inputArgs.isEmpty)
-      Files[IO].list(cwd).filter(_.extName == ".scala")
-    else
-      fs2.Stream.emits(inputArgs.map { arg =>
-        if (arg.endsWith(".scala")) cwd / arg else cwd / (arg + ".scala")
-      })
-
-  sourcePaths
-    .evalMap(readFile)
-    .compile
-    .toList
-    .map { contents =>
-      parseDirectivesFromLines(contents.flatMap(_.linesIterator.toList))
-    }
-}
-
-/** Compute the lock key for a target given the full set of platforms and versions. */
-def targetKey(
-    target: Target,
-    allPlatforms: List[String],
-    allVersions: List[Option[String]]
-): String = {
-  val multiPlatform = allPlatforms.size > 1
-  val multiVersion = allVersions.size > 1
+/** Compute the lock key for a target given the full target list. */
+def targetKey(target: Target, allTargets: List[Target]): String = {
+  val multiPlatform = allTargets.map(_.platform).distinct.sizeIs > 1
+  val multiVersion = allTargets.map(_.scalaVersion).distinct.sizeIs > 1
   (multiPlatform, multiVersion) match {
-    case (true, true)  => s"${target.platform}-${target.scalaVersion.getOrElse("default")}"
-    case (true, false) => target.platform
-    case (false, true) => target.scalaVersion.getOrElse("default")
+    case (true, true) =>
+      s"${target.platform}-${target.scalaVersion.getOrElse("default")}"
+    case (true, false)  => target.platform
+    case (false, true)  => target.scalaVersion.getOrElse("default")
     case (false, false) => target.platform
   }
 }
@@ -494,7 +471,8 @@ val hashPrinter: Printer = Printer.noSpaces.copy(sortKeys = true)
 val lockfilePrinter: Printer =
   Printer.spaces2.copy(sortKeys = true, colonLeft = "", dropNullValues = true)
 
-/** Compute lockfile content without writing it. Always recomputes from scratch. */
+/** Compute lockfile content without writing it. Always recomputes from scratch.
+  */
 def computeLock(inputs: List[String]): IO[String] = {
   val inputArgs = if (inputs.isEmpty) List(".") else inputs
 
@@ -502,14 +480,10 @@ def computeLock(inputs: List[String]): IO[String] = {
     scalaCli <- resolveScalaCli
     cwd <- Files[IO].currentWorkingDirectory
 
-    (allPlatforms, allVersions) <- parseDirectives(inputArgs, cwd)
-    targets = for {
-      platform <- allPlatforms
-      version  <- allVersions
-    } yield Target(platform, version)
+    targets <- listTargets(scalaCli, inputArgs)
 
     _ <- info(
-      s"Targets: ${C.bold}${targets.map(t => targetKey(t, allPlatforms, allVersions)).mkString(", ")}${C.reset}"
+      s"Targets: ${C.bold}${targets.map(t => targetKey(t, targets)).mkString(", ")}${C.reset}"
     )
 
     // Read sources once from any target's export (they're shared across targets, at least for now that's the assumption)
@@ -519,16 +493,20 @@ def computeLock(inputs: List[String]): IO[String] = {
       scalaCli,
       ("--power" :: "export" :: "--json" :: "--server=false" :: "--offline" ::
         "--platform" :: firstTarget.platformFlag ::
-        firstTarget.scalaVersion.toList.flatMap(v => List("--scala-version", v)) ++
+        firstTarget.scalaVersion.toList
+          .flatMap(v => List("--scala-version", v)) ++
         inputArgs)*
     )
     firstExport <- IO.fromEither(
       parseJson(firstExportJson)
         .flatMap(_.as[ExportInfo])
-        .leftMap(e => new RuntimeException(s"Failed to parse export JSON: ${e.getMessage}"))
+        .leftMap(e =>
+          new RuntimeException(s"Failed to parse export JSON: ${e.getMessage}")
+        )
     )
     sources = {
-      val mainScope = firstExport.scopes.getOrElse("main", ExportScope(Nil, Nil))
+      val mainScope =
+        firstExport.scopes.getOrElse("main", ExportScope(Nil, Nil))
       mainScope.sources.map { s =>
         s.stripPrefix(cwd.toString + "/")
           .stripPrefix("/private" + cwd.toString + "/")
@@ -536,7 +514,7 @@ def computeLock(inputs: List[String]): IO[String] = {
     }
 
     targetLocks <- targets.traverse { target =>
-      val key = targetKey(target, allPlatforms, allVersions)
+      val key = targetKey(target, targets)
       computeTargetLock(scalaCli, inputArgs, cwd, target, key).map(key -> _)
     }
 
@@ -577,7 +555,15 @@ private def computeTargetLock(
           new RuntimeException(s"Failed to decode export JSON: ${e.message}")
         )
     )
-    result <- computeTargetLockContent(scalaCli, inputArgs, cwd, target, key, export_, exportHash)
+    result <- computeTargetLockContent(
+      scalaCli,
+      inputArgs,
+      cwd,
+      target,
+      key,
+      export_,
+      exportHash
+    )
   } yield result
 }
 
@@ -640,7 +626,8 @@ private def computeTargetLockContent(
         nativeLockDeps <- export_.nativeOptions.traverse { opts =>
           // Compiler plugins + runtime deps resolved together, separately from user libs.
           // This ensures they stay at scalaNativeVersion and don't get evicted by user deps.
-          val nativeDeps = toDeps(opts.compilerPlugins) ++ toDeps(opts.runtimeDependencies)
+          val nativeDeps =
+            toDeps(opts.compilerPlugins) ++ toDeps(opts.runtimeDependencies)
 
           for {
             _ <- step("Fetching native dependencies...")
@@ -649,13 +636,20 @@ private def computeTargetLockContent(
               s"Native: ${C.bold}${nativeArtifacts.size}${C.reset} artifacts"
             )
             _ <- step("Fetching native tooling dependencies...")
-            toolingArtifacts <- fetchArtifacts(toDeps(opts.toolingDependencies)*)
+            toolingArtifacts <- fetchArtifacts(
+              toDeps(opts.toolingDependencies)*
+            )
             _ <- info(
               s"Native tooling: ${C.bold}${toolingArtifacts.size}${C.reset} artifacts"
             )
             nativeEntries <- collectEntries(nativeArtifacts)
             toolingEntries <- collectEntries(toolingArtifacts)
-          } yield NativeLockDeps(opts.scalaNativeVersion, nativeEntries, Nil, toolingEntries)
+          } yield NativeLockDeps(
+            opts.scalaNativeVersion,
+            nativeEntries,
+            Nil,
+            toolingEntries
+          )
         }
 
         _ <- step("Hashing artifacts...")
@@ -684,10 +678,12 @@ private def computeTargetLockContent(
 
 def lock(inputs: List[String]): IO[ExitCode] =
   for {
-    content         <- computeLock(inputs)
-    cwd             <- Files[IO].currentWorkingDirectory
-    lockfilePath    = cwd / "scala.lock.json"
-    existingContent <- Files[IO].exists(lockfilePath).ifM(readFile(lockfilePath), IO.pure(""))
+    content <- computeLock(inputs)
+    cwd <- Files[IO].currentWorkingDirectory
+    lockfilePath = cwd / "scala.lock.json"
+    existingContent <- Files[IO]
+      .exists(lockfilePath)
+      .ifM(readFile(lockfilePath), IO.pure(""))
     _ <-
       if (existingContent == content)
         info("Lock is up to date.")
@@ -726,7 +722,9 @@ def init(inputs: List[String]): IO[ExitCode] =
 private def doInit(cwd: Path): IO[ExitCode] = {
   val pname = cwd.fileName.toString
 
-  def prepareDerivation(isCross: Boolean): IO[(List[(Path, String)], List[String])] =
+  def prepareDerivation(
+      isCross: Boolean
+  ): IO[(List[(Path, String)], List[String])] =
     Files[IO].exists(cwd / "derivation.nix").flatMap {
       case true =>
         warn("derivation.nix already exists, skipping.")
@@ -743,7 +741,9 @@ private def doInit(cwd: Path): IO[ExitCode] = {
              |  lockFile = ./scala.lock.json;
              |}
              |""".stripMargin
-        IO.pure((List(cwd / "derivation.nix" -> content), List("derivation.nix")))
+        IO.pure(
+          (List(cwd / "derivation.nix" -> content), List("derivation.nix"))
+        )
     }
 
   def prepareFlake(isCross: Boolean): IO[(List[(Path, String)], List[String])] =
@@ -775,7 +775,7 @@ private def doInit(cwd: Path): IO[ExitCode] = {
           errln(
             if (isCross)
               s"    ${C.dim}# buildScalaCliApps returns an attrset — flatten into packages:${C.reset}\n" +
-              s"    ${C.dim}pkgs.callPackage ./derivation.nix { }${C.reset}"
+                s"    ${C.dim}pkgs.callPackage ./derivation.nix { }${C.reset}"
             else
               s"    ${C.dim}packages.default = pkgs.callPackage ./derivation.nix { };${C.reset}"
           ) *>
@@ -845,14 +845,17 @@ private def doInit(cwd: Path): IO[ExitCode] = {
       s"${C.bold}Initializing scala-cli-nix project: ${C.green}$pname${C.reset}"
     )
     _ <- errln("")
-    (platforms, versions) <- parseDirectives(Nil, cwd)
-    isCross = platforms.size > 1 || versions.size > 1
+    scalaCli <- resolveScalaCli
+    targets <- listTargets(scalaCli, Nil)
+    isCross = targets.sizeIs > 1
     derivation <- prepareDerivation(isCross)
     flake <- prepareFlake(isCross)
     _ <- errln("")
     lockContent <- computeLock(Nil)
     pendingFiles =
-      derivation._1 ++ flake._1 ++ List((cwd / "scala.lock.json") -> lockContent)
+      derivation._1 ++ flake._1 ++ List(
+        (cwd / "scala.lock.json") -> lockContent
+      )
     fileNames = derivation._2 ++ flake._2 ++ List("scala.lock.json")
     _ <- step("Writing files...")
     _ <- pendingFiles.traverse_ { case (path, content) =>
