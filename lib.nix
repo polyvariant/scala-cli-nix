@@ -68,7 +68,7 @@ let
   platformFlag = platform:
     if platform == "Native" then "scala-native" else "jvm";
 
-  buildJvmApp = { pname, version, src, sources, fetched, mainClass }:
+  buildJvmApp = { pname, version, src, sources, fetched, mainClass, attrOverrides }:
     let
       inherit (prepareSources sources src) sourceArgs;
       allDeps = fetched.compiler ++ fetched.libraryDependencies;
@@ -78,7 +78,7 @@ let
       libraryJars = builtins.filter (e: builtins.match ".*\\.jar" e.dep.url != null) fetched.libraryDependencies;
       libraryClasspath = builtins.concatStringsSep ":" (builtins.map (e: e.path) libraryJars);
 
-      compiledJar = stdenv.mkDerivation {
+      defaultCompileAttrs = {
         pname = "${pname}-compiled";
         inherit version;
         dontUnpack = true;
@@ -112,12 +112,14 @@ let
         installPhase = "true";
       };
 
+      compiledJar = stdenv.mkDerivation (attrOverrides defaultCompileAttrs "JVM");
+
       resolvedMainClass =
         if mainClass != null
         then mainClass
         else builtins.readFile "${compiledJar}/share/main-class";
 
-    in stdenv.mkDerivation {
+    in stdenv.mkDerivation (attrOverrides ({
       inherit pname version;
       dontUnpack = true;
       buildInputs = [ openjdk makeWrapper ];
@@ -126,15 +128,15 @@ let
         makeWrapper ${openjdk}/bin/java $out/bin/${pname} \
           --add-flags "-cp ${libraryClasspath}:${compiledJar}/share/${pname}.jar ${resolvedMainClass}"
       '';
-    };
+    }) "JVM");
 
-  buildNativeApp = { pname, version, src, sources, fetched }:
+  buildNativeApp = { pname, version, src, sources, fetched, attrOverrides }:
     let
       inherit (prepareSources sources src) sourceArgs;
       allDeps = fetched.compiler ++ fetched.libraryDependencies
         ++ fetched.nativeCompilerPlugins ++ fetched.nativeRuntimeDependencies ++ fetched.nativeToolingDependencies;
       depsCache = mkCacheDir "scala-cli-deps-${pname}" allDeps;
-    in stdenv.mkDerivation {
+    in stdenv.mkDerivation (attrOverrides ({
       inherit pname version;
       dontUnpack = true;
       buildInputs = [ scala-cli openjdk clang which ];
@@ -153,12 +155,12 @@ let
           -o $out/bin/${pname}
       '';
       installPhase = "true";
-    };
+    }) "Native");
 
-  buildTarget = { pname, version, src, sources, targetFetched, mainClass ? null }:
+  buildTarget = { pname, version, src, sources, targetFetched, mainClass ? null, attrOverrides }:
     if targetFetched.platform == "Native"
-    then buildNativeApp { inherit pname version src sources; fetched = targetFetched; }
-    else buildJvmApp { inherit pname version src sources mainClass; fetched = targetFetched; };
+    then buildNativeApp { inherit pname version src sources attrOverrides; fetched = targetFetched; }
+    else buildJvmApp { inherit pname version src sources mainClass attrOverrides; fetched = targetFetched; };
 
   # Normalize dots to underscores for Nix attribute name ergonomics
   nixKey = key: builtins.replaceStrings [ "." ] [ "_" ] key;
@@ -166,14 +168,14 @@ let
 in {
   # Build all targets from a lockfile, returning an attrset keyed by target name
   # e.g. { jvm = <drv>; native = <drv>; } or { jvm-3_6_4 = <drv>; native-3_6_4 = <drv>; }
-  buildScalaCliApps = { pname, version, src, lockFile, mainClass ? null }:
+  buildScalaCliApps = { pname, version, src, lockFile, mainClass ? null, attrOverrides ? (attrs: _platform: attrs) }:
     let
       fetched = fetchDeps lockFile;
     in builtins.listToAttrs (
       builtins.map (key:
         { name = nixKey key;
           value = buildTarget {
-            inherit pname version src mainClass;
+            inherit pname version src mainClass attrOverrides;
             sources = fetched.sources;
             targetFetched = fetched.targets.${key};
           };
@@ -184,7 +186,7 @@ in {
   # Build a single target from a lockfile.
   # If the lockfile has exactly one target, builds it.
   # If it has multiple targets, `target` must be specified (e.g. target = "jvm").
-  buildScalaCliApp = { pname, version, src, lockFile, mainClass ? null, target ? null }:
+  buildScalaCliApp = { pname, version, src, lockFile, mainClass ? null, target ? null, attrOverrides ? (attrs: _platform: attrs) }:
     let
       fetched = fetchDeps lockFile;
       targetNames = builtins.attrNames fetched.targets;
@@ -195,7 +197,7 @@ in {
         then builtins.head targetNames
         else builtins.throw "scala-cli-nix: lockfile has multiple targets (${builtins.concatStringsSep ", " targetNames}). Pass `target` to buildScalaCliApp or use buildScalaCliApps.";
     in buildTarget {
-      inherit pname version src mainClass;
+      inherit pname version src mainClass attrOverrides;
       sources = fetched.sources;
       targetFetched = fetched.targets.${resolvedTarget};
     };

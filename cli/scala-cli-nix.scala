@@ -229,6 +229,8 @@ def extractParent(pomPath: Path): IO[Option[(String, String, String)]] =
     }
   }
 
+// TODO: hardcoded Maven Central URL. Should support custom repositories from
+// scala-cli `using resolvers` directives. Also affects collectDeclaredPoms below.
 def collectParentPoms(pomPath: Path): IO[List[ArtifactEntry]] = {
   def loop(current: Path, acc: List[ArtifactEntry]): IO[List[ArtifactEntry]] =
     extractParent(current).flatMap {
@@ -253,7 +255,60 @@ def collectParentPoms(pomPath: Path): IO[List[ArtifactEntry]] = {
   loop(pomPath, Nil)
 }
 
-def collectEntries(artifacts: List[(Artifact, File)]): IO[List[ArtifactEntry]] =
+/** Parse declared dependency coordinates from a POM's <dependencies> section.
+ *  Returns (groupId, artifactId, version) tuples. May include unresolved property
+ *  placeholders like ${project.version} — caller filters those out.
+ */
+def extractDeclaredDeps(pomPath: Path): IO[List[(String, String, String)]] =
+  readFile(pomPath).map { content =>
+    val depsBlock = "(?s)<dependencies>\\s*(.*?)</dependencies>".r
+      .findFirstMatchIn(content)
+      .map(_.group(1))
+      .getOrElse("")
+    val depPattern = "(?s)<dependency>\\s*(.*?)</dependency>".r
+    depPattern.findAllMatchIn(depsBlock).toList.flatMap { m =>
+      val body = m.group(1)
+      for {
+        g <- "<groupId>(.*?)</groupId>".r.findFirstMatchIn(body).map(_.group(1))
+        a <- "<artifactId>(.*?)</artifactId>".r.findFirstMatchIn(body).map(_.group(1))
+        v <- "<version>(.*?)</version>".r.findFirstMatchIn(body).map(_.group(1))
+      } yield (g, a, v)
+    }
+  }
+
+/** Walk all resolved POMs to find declared deps and fetch their JAR + POM
+ *  individually. This captures evicted versions that scala-cli may try to fetch
+ *  during offline resolution.
+ *
+ *  Each declared dep is fetched as its own resolution. Unlike `withTransitive(false)`
+ *  which fails on some artifacts in the Coursier interface, this works reliably.
+ *  Failures are tolerated (e.g. for placeholder/marker artifacts).
+ */
+def collectDeclaredPoms(
+    resolvedPomPaths: List[Path],
+    resolvedUrls: Set[String]
+): IO[List[ArtifactEntry]] =
+  resolvedPomPaths.flatTraverse(extractDeclaredDeps).flatMap { allDeclared =>
+    val candidates = allDeclared.distinct
+      .filterNot { (_, _, v) => v.contains("$") }
+      // Skip resolved winners (their JAR URL would already appear in resolvedUrls)
+      .filterNot { (g, a, v) =>
+        resolvedUrls.exists { u =>
+          u.contains(s"${g.replace('.', '/')}/$a/$v/")
+        }
+      }
+
+    candidates.flatTraverse { (g, a, v) =>
+      val dep = Dependency.of(g, a, v)
+      fetchArtifacts(dep).attempt.flatMap {
+        case Right(arts) => collectEntriesNoRecurse(arts)
+        case Left(_)     => IO.pure(List.empty[ArtifactEntry])
+      }
+    }
+  }
+
+/** Like collectEntries but does not recursively walk declared deps (avoids infinite loop). */
+def collectEntriesNoRecurse(artifacts: List[(Artifact, File)]): IO[List[ArtifactEntry]] =
   artifacts
     .flatTraverse { (artifact, file) =>
       val url = artifact.getUrl
@@ -279,6 +334,42 @@ def collectEntries(artifacts: List[(Artifact, File)]): IO[List[ArtifactEntry]] =
       }
     }
     .map(_.distinctBy(_.url))
+
+def collectEntries(artifacts: List[(Artifact, File)]): IO[List[ArtifactEntry]] = {
+  val resolved: IO[(List[ArtifactEntry], List[Path])] =
+    artifacts.foldLeftM((List.empty[ArtifactEntry], List.empty[Path])) {
+      case ((entries, poms), (artifact, file)) =>
+        val url = artifact.getUrl
+        val artifactPath = Path.fromNioPath(file.toPath)
+
+        sha256Base64(artifactPath).flatMap { jarHash =>
+          val jarEntry = ArtifactEntry(url, jarHash)
+
+          findPomForJar(url).flatMap {
+            case None          => IO.pure((jarEntry :: entries, poms))
+            case Some(pomPath) =>
+              val pomUrl = {
+                val direct = url.replaceFirst("\\.jar$", ".pom")
+                if (cachePathForUrl(direct).toString == pomPath.toString) direct
+                else urlForCachePath(pomPath)
+              }
+              sha256Base64(pomPath).flatMap { pomHash =>
+                collectParentPoms(pomPath).map { parentEntries =>
+                  val newEntries =
+                    jarEntry :: ArtifactEntry(pomUrl, pomHash) :: parentEntries ++ entries
+                  (newEntries, pomPath :: poms)
+                }
+              }
+          }
+        }
+    }
+
+  for {
+    (entries, pomPaths) <- resolved
+    resolvedUrls = entries.map(_.url).toSet
+    declaredPoms <- collectDeclaredPoms(pomPaths, resolvedUrls)
+  } yield (entries ++ declaredPoms).distinctBy(_.url)
+}
 
 // --- scala-cli helpers ---
 
@@ -533,28 +624,31 @@ private def computeTargetLockContent(
           val parts = dep.split(":")
           Dependency.of(parts(0), parts(1), parts(2))
         }
-        // For Native: combine library + native compilerPlugins + runtimeDependencies
-        // into a single resolution to match scala-cli's behavior.
-        // Tooling deps use a different Scala version (2.12) and stay separate.
-        nativeNonToolingDeps = export_.nativeOptions.toList.flatMap { opts =>
-          toDeps(opts.compilerPlugins) ++ toDeps(opts.runtimeDependencies)
-        }
-        allLibDeps = (libraryArtifact +: userDeps) ++ nativeNonToolingDeps
+        allLibDeps = libraryArtifact +: userDeps
         libArtifacts <- fetchArtifacts(allLibDeps*)
         _ <- info(
           s"Libraries: ${C.bold}${libArtifacts.size}${C.reset} artifacts (transitive)"
         )
 
         nativeLockDeps <- export_.nativeOptions.traverse { opts =>
-          step("Fetching native tooling dependencies...") *>
-            fetchArtifacts(toDeps(opts.toolingDependencies)*)
-              .flatMap(collectEntries)
-              .map(NativeLockDeps(opts.scalaNativeVersion, Nil, Nil, _))
-              .flatTap { n =>
-                info(
-                  s"Native tooling: ${C.bold}${n.toolingDependencies.size}${C.reset} artifacts"
-                )
-              }
+          // Compiler plugins + runtime deps resolved together, separately from user libs.
+          // This ensures they stay at scalaNativeVersion and don't get evicted by user deps.
+          val nativeDeps = toDeps(opts.compilerPlugins) ++ toDeps(opts.runtimeDependencies)
+
+          for {
+            _ <- step("Fetching native dependencies...")
+            nativeArtifacts <- fetchArtifacts(nativeDeps*)
+            _ <- info(
+              s"Native: ${C.bold}${nativeArtifacts.size}${C.reset} artifacts"
+            )
+            _ <- step("Fetching native tooling dependencies...")
+            toolingArtifacts <- fetchArtifacts(toDeps(opts.toolingDependencies)*)
+            _ <- info(
+              s"Native tooling: ${C.bold}${toolingArtifacts.size}${C.reset} artifacts"
+            )
+            nativeEntries <- collectEntries(nativeArtifacts)
+            toolingEntries <- collectEntries(toolingArtifacts)
+          } yield NativeLockDeps(opts.scalaNativeVersion, nativeEntries, Nil, toolingEntries)
         }
 
         _ <- step("Hashing artifacts...")
