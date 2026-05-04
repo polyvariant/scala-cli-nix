@@ -148,3 +148,104 @@ class DirectiveParsingTests extends munit.FunSuite {
     assertEquals(targetKey(t, platforms, versions), "native-3.6.4")
   }
 }
+
+class ParseDeclaredDepsTests extends munit.FunSuite {
+
+  test("no <dependencies> block: returns empty") {
+    val pom = """<?xml version="1.0"?>
+                |<project>
+                |  <groupId>foo</groupId>
+                |  <artifactId>bar</artifactId>
+                |  <version>1.0</version>
+                |</project>""".stripMargin
+    assertEquals(parseDeclaredDeps(pom), Nil)
+  }
+
+  test("single dependency") {
+    val pom = """<dependencies>
+                |  <dependency>
+                |    <groupId>org.example</groupId>
+                |    <artifactId>foo</artifactId>
+                |    <version>1.2.3</version>
+                |  </dependency>
+                |</dependencies>""".stripMargin
+    assertEquals(parseDeclaredDeps(pom), List(("org.example", "foo", "1.2.3")))
+  }
+
+  test("multiple dependencies in order") {
+    val pom = """<dependencies>
+                |  <dependency>
+                |    <groupId>a</groupId><artifactId>x</artifactId><version>1</version>
+                |  </dependency>
+                |  <dependency>
+                |    <groupId>b</groupId><artifactId>y</artifactId><version>2</version>
+                |  </dependency>
+                |</dependencies>""".stripMargin
+    assertEquals(parseDeclaredDeps(pom), List(("a", "x", "1"), ("b", "y", "2")))
+  }
+
+  test("dependency with exclusions and scope") {
+    val pom = """<dependencies>
+                |  <dependency>
+                |    <groupId>org.scala-native</groupId>
+                |    <artifactId>scalalib_native0.5_2.13</artifactId>
+                |    <version>2.13.8+0.5.2</version>
+                |    <scope>compile</scope>
+                |    <exclusions>
+                |      <exclusion>
+                |        <groupId>org.scala-lang</groupId>
+                |        <artifactId>scala-library</artifactId>
+                |      </exclusion>
+                |    </exclusions>
+                |  </dependency>
+                |</dependencies>""".stripMargin
+    assertEquals(
+      parseDeclaredDeps(pom),
+      List(("org.scala-native", "scalalib_native0.5_2.13", "2.13.8+0.5.2"))
+    )
+  }
+
+  test("ignores deps in <dependencyManagement>") {
+    val pom = """<dependencyManagement>
+                |  <dependencies>
+                |    <dependency>
+                |      <groupId>managed</groupId><artifactId>m</artifactId><version>9</version>
+                |    </dependency>
+                |  </dependencies>
+                |</dependencyManagement>
+                |<dependencies>
+                |  <dependency>
+                |    <groupId>real</groupId><artifactId>r</artifactId><version>1</version>
+                |  </dependency>
+                |</dependencies>""".stripMargin
+    val result = parseDeclaredDeps(pom)
+    assert(result.contains(("real", "r", "1")), s"expected real:r:1 in $result")
+    assert(!result.exists(_._1 == "managed"), s"managed dep should be excluded, got $result")
+  }
+
+  test("dep missing version is dropped") {
+    val pom = """<dependencies>
+                |  <dependency>
+                |    <groupId>a</groupId><artifactId>x</artifactId>
+                |  </dependency>
+                |  <dependency>
+                |    <groupId>b</groupId><artifactId>y</artifactId><version>2</version>
+                |  </dependency>
+                |</dependencies>""".stripMargin
+    assertEquals(parseDeclaredDeps(pom), List(("b", "y", "2")))
+  }
+
+  test("property placeholders are returned verbatim (caller filters)") {
+    val pom = """<dependencies>
+                |  <dependency>
+                |    <groupId>org.example</groupId>
+                |    <artifactId>foo</artifactId>
+                |    <version>${project.version}</version>
+                |  </dependency>
+                |</dependencies>""".stripMargin
+    assertEquals(
+      parseDeclaredDeps(pom),
+      List(("org.example", "foo", "${project.version}"))
+    )
+  }
+}

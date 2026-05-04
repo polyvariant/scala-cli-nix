@@ -255,26 +255,33 @@ def collectParentPoms(pomPath: Path): IO[List[ArtifactEntry]] = {
   loop(pomPath, Nil)
 }
 
-/** Parse declared dependency coordinates from a POM's <dependencies> section.
- *  Returns (groupId, artifactId, version) tuples. May include unresolved property
- *  placeholders like ${project.version} — caller filters those out.
+/** Pure version of extractDeclaredDeps. Returns (groupId, artifactId, version)
+ *  tuples for each <dependency> in the POM's <dependencies> section.
+ *  Excludes deps inside <dependencyManagement>.
+ *  May include unresolved property placeholders like ${project.version} —
+ *  caller filters those out.
  */
-def extractDeclaredDeps(pomPath: Path): IO[List[(String, String, String)]] =
-  readFile(pomPath).map { content =>
-    val depsBlock = "(?s)<dependencies>\\s*(.*?)</dependencies>".r
-      .findFirstMatchIn(content)
-      .map(_.group(1))
-      .getOrElse("")
-    val depPattern = "(?s)<dependency>\\s*(.*?)</dependency>".r
-    depPattern.findAllMatchIn(depsBlock).toList.flatMap { m =>
-      val body = m.group(1)
-      for {
-        g <- "<groupId>(.*?)</groupId>".r.findFirstMatchIn(body).map(_.group(1))
-        a <- "<artifactId>(.*?)</artifactId>".r.findFirstMatchIn(body).map(_.group(1))
-        v <- "<version>(.*?)</version>".r.findFirstMatchIn(body).map(_.group(1))
-      } yield (g, a, v)
-    }
+def parseDeclaredDeps(pomContent: String): List[(String, String, String)] = {
+  val withoutManagement =
+    "(?s)<dependencyManagement>.*?</dependencyManagement>".r
+      .replaceAllIn(pomContent, "")
+  val depsBlock = "(?s)<dependencies>\\s*(.*?)</dependencies>".r
+    .findFirstMatchIn(withoutManagement)
+    .map(_.group(1))
+    .getOrElse("")
+  val depPattern = "(?s)<dependency>\\s*(.*?)</dependency>".r
+  depPattern.findAllMatchIn(depsBlock).toList.flatMap { m =>
+    val body = m.group(1)
+    for {
+      g <- "<groupId>(.*?)</groupId>".r.findFirstMatchIn(body).map(_.group(1))
+      a <- "<artifactId>(.*?)</artifactId>".r.findFirstMatchIn(body).map(_.group(1))
+      v <- "<version>(.*?)</version>".r.findFirstMatchIn(body).map(_.group(1))
+    } yield (g, a, v)
   }
+}
+
+def extractDeclaredDeps(pomPath: Path): IO[List[(String, String, String)]] =
+  readFile(pomPath).map(parseDeclaredDeps)
 
 /** Walk all resolved POMs to find declared deps and fetch their JAR + POM
  *  individually. This captures evicted versions that scala-cli may try to fetch
