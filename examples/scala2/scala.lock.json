@@ -1,84 +1,121 @@
 {
-  "compiler" : [
-    {
-      "sha256" : "LxWJH8rnqtMKOJIZT7KrtiJM985dK9kPun8cSGgvyiE=",
-      "url" : "https://repo1.maven.org/maven2/org/scala-lang/scala-compiler/2.13.18/scala-compiler-2.13.18.jar"
-    },
-    {
-      "sha256" : "6wLO9/qgxN7nvmqYPo7pP3/hb/w+fAFjxZfx9cRBSGo=",
-      "url" : "https://repo1.maven.org/maven2/org/scala-lang/scala-compiler/2.13.18/scala-compiler-2.13.18.pom"
-    },
-    {
-      "sha256" : "ToXZb/e8fcYnmFUjw1QbmReqoI6VY5E4DELbIaLE5aA=",
-      "url" : "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.jar"
-    },
-    {
-      "sha256" : "w/sRghThI5mFf0rqowM6uLBvbtvuyb/ky18BAcA0wh0=",
-      "url" : "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.pom"
-    },
-    {
-      "sha256" : "aTX/GYKyrJPWlfFapmkhvi9gKSEnev4ALwGP2MfW4ps=",
-      "url" : "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.18/scala-reflect-2.13.18.jar"
-    },
-    {
-      "sha256" : "A5pTWGr1TYIMqq+Rb6YiPBrltq4EICyKO8mC+O+rp18=",
-      "url" : "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.18/scala-reflect-2.13.18.pom"
-    },
-    {
-      "sha256" : "YgQDAw1nakon94CjrOx0ON7hsWUaHIBPprsRuwc5mm8=",
-      "url" : "https://repo1.maven.org/maven2/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar"
-    },
-    {
-      "sha256" : "Q01Zih4YExEThSNRYWJ6TE69YhNPcFRCjT4gKzLPOd4=",
-      "url" : "https://repo1.maven.org/maven2/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.pom"
-    },
-    {
-      "sha256" : "pDRNpY5TqOjFe+Gekjut8ksn3UKwfebURtKmWaRWUJo=",
-      "url" : "https://repo1.maven.org/maven2/io/github/java-diff-utils/java-diff-utils-parent/4.16/java-diff-utils-parent-4.16.pom"
-    },
-    {
-      "sha256" : "7SaASHZC35U3nyIMCcD3fiUJVxM4fivADC1lgbt5yAQ=",
-      "url" : "https://repo1.maven.org/maven2/org/jline/jline/3.29.0/jline-3.29.0-jdk8.jar"
-    },
-    {
-      "sha256" : "3kA5CpgAeh+lw1PW1PYTKA4JXTA4VY7LXnwjHb0SanA=",
-      "url" : "https://repo1.maven.org/maven2/org/jline/jline/3.29.0/jline-3.29.0.pom"
-    },
-    {
-      "sha256" : "eSLv09hwp9euA7GWwwDjXF3gIo5ZpbASrqZB4215ko4=",
-      "url" : "https://repo1.maven.org/maven2/org/jline/jline-parent/3.29.0/jline-parent-3.29.0.pom"
-    }
-  ],
-  "exportHash" : "4d59099430dcfb1f079a86594032d842cb39fc83",
-  "libraryDependencies" : [
-    {
-      "sha256" : "ToXZb/e8fcYnmFUjw1QbmReqoI6VY5E4DELbIaLE5aA=",
-      "url" : "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.jar"
-    },
-    {
-      "sha256" : "w/sRghThI5mFf0rqowM6uLBvbtvuyb/ky18BAcA0wh0=",
-      "url" : "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.pom"
-    },
-    {
-      "sha256" : "AbHq3A978vjwRTTyFikM4DCTAKUe7+Bgg2808q17M4g=",
-      "url" : "https://repo1.maven.org/maven2/com/lihaoyi/os-lib_2.13/0.11.4/os-lib_2.13-0.11.4.jar"
-    },
-    {
-      "sha256" : "6gOyfZ2FCGhdrNNuN4xDZLK+wUqqQdQ+eQC8qdtI+Kw=",
-      "url" : "https://repo1.maven.org/maven2/com/lihaoyi/os-lib_2.13/0.11.4/os-lib_2.13-0.11.4.pom"
-    },
-    {
-      "sha256" : "IK8jHCIvxxwp4Gs82NkZCha0EtqDzEn7C3eM8txvlNI=",
-      "url" : "https://repo1.maven.org/maven2/com/lihaoyi/geny_2.13/1.1.1/geny_2.13-1.1.1.jar"
-    },
-    {
-      "sha256" : "hI92BOaF6vKlsR84uLXeBpNKdp8+nRfAdyYEItMu01o=",
-      "url" : "https://repo1.maven.org/maven2/com/lihaoyi/geny_2.13/1.1.1/geny_2.13-1.1.1.pom"
-    }
-  ],
-  "scalaVersion" : "2.13.18",
-  "sources" : [
+  "sources": [
     "app.scala"
   ],
-  "version" : 4
+  "targets": {
+    "jvm": {
+      "compiler": [
+        {
+          "sha256": "7SaASHZC35U3nyIMCcD3fiUJVxM4fivADC1lgbt5yAQ=",
+          "url": "https://repo1.maven.org/maven2/org/jline/jline/3.29.0/jline-3.29.0-jdk8.jar"
+        },
+        {
+          "sha256": "3kA5CpgAeh+lw1PW1PYTKA4JXTA4VY7LXnwjHb0SanA=",
+          "url": "https://repo1.maven.org/maven2/org/jline/jline/3.29.0/jline-3.29.0.pom"
+        },
+        {
+          "sha256": "eSLv09hwp9euA7GWwwDjXF3gIo5ZpbASrqZB4215ko4=",
+          "url": "https://repo1.maven.org/maven2/org/jline/jline-parent/3.29.0/jline-parent-3.29.0.pom"
+        },
+        {
+          "sha256": "YgQDAw1nakon94CjrOx0ON7hsWUaHIBPprsRuwc5mm8=",
+          "url": "https://repo1.maven.org/maven2/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar"
+        },
+        {
+          "sha256": "Q01Zih4YExEThSNRYWJ6TE69YhNPcFRCjT4gKzLPOd4=",
+          "url": "https://repo1.maven.org/maven2/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.pom"
+        },
+        {
+          "sha256": "pDRNpY5TqOjFe+Gekjut8ksn3UKwfebURtKmWaRWUJo=",
+          "url": "https://repo1.maven.org/maven2/io/github/java-diff-utils/java-diff-utils-parent/4.16/java-diff-utils-parent-4.16.pom"
+        },
+        {
+          "sha256": "aTX/GYKyrJPWlfFapmkhvi9gKSEnev4ALwGP2MfW4ps=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.18/scala-reflect-2.13.18.jar"
+        },
+        {
+          "sha256": "A5pTWGr1TYIMqq+Rb6YiPBrltq4EICyKO8mC+O+rp18=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.18/scala-reflect-2.13.18.pom"
+        },
+        {
+          "sha256": "ToXZb/e8fcYnmFUjw1QbmReqoI6VY5E4DELbIaLE5aA=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.jar"
+        },
+        {
+          "sha256": "w/sRghThI5mFf0rqowM6uLBvbtvuyb/ky18BAcA0wh0=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.pom"
+        },
+        {
+          "sha256": "LxWJH8rnqtMKOJIZT7KrtiJM985dK9kPun8cSGgvyiE=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-compiler/2.13.18/scala-compiler-2.13.18.jar"
+        },
+        {
+          "sha256": "6wLO9/qgxN7nvmqYPo7pP3/hb/w+fAFjxZfx9cRBSGo=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-compiler/2.13.18/scala-compiler-2.13.18.pom"
+        }
+      ],
+      "exportHash": "9e04e3b4af6a6466dd3b270b15e3190a989e7be1",
+      "libraryDependencies": [
+        {
+          "sha256": "IK8jHCIvxxwp4Gs82NkZCha0EtqDzEn7C3eM8txvlNI=",
+          "url": "https://repo1.maven.org/maven2/com/lihaoyi/geny_2.13/1.1.1/geny_2.13-1.1.1.jar"
+        },
+        {
+          "sha256": "hI92BOaF6vKlsR84uLXeBpNKdp8+nRfAdyYEItMu01o=",
+          "url": "https://repo1.maven.org/maven2/com/lihaoyi/geny_2.13/1.1.1/geny_2.13-1.1.1.pom"
+        },
+        {
+          "sha256": "AbHq3A978vjwRTTyFikM4DCTAKUe7+Bgg2808q17M4g=",
+          "url": "https://repo1.maven.org/maven2/com/lihaoyi/os-lib_2.13/0.11.4/os-lib_2.13-0.11.4.jar"
+        },
+        {
+          "sha256": "6gOyfZ2FCGhdrNNuN4xDZLK+wUqqQdQ+eQC8qdtI+Kw=",
+          "url": "https://repo1.maven.org/maven2/com/lihaoyi/os-lib_2.13/0.11.4/os-lib_2.13-0.11.4.pom"
+        },
+        {
+          "sha256": "ToXZb/e8fcYnmFUjw1QbmReqoI6VY5E4DELbIaLE5aA=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.jar"
+        },
+        {
+          "sha256": "w/sRghThI5mFf0rqowM6uLBvbtvuyb/ky18BAcA0wh0=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.pom"
+        },
+        {
+          "sha256": "oIgrglFBkMK6x9GkWYcqdfAF/A8+iLK8A5A2cUbjXbc=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.8/scala-library-2.13.8.jar"
+        },
+        {
+          "sha256": "SucLPLDCFdaa6sKMkhLmgR+euXiVZ4I0BgiTNCCIDVI=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.8/scala-library-2.13.8.pom"
+        },
+        {
+          "sha256": "Q+DKFYPfGWbq8C8Pvdz7N4S5ld0Gv8kHIJNHdYzkt+M=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.14/scala-library-2.13.14.jar"
+        },
+        {
+          "sha256": "zuhsbfVlOq9VQDZmkC/LsKqvQA6yz/sn8Jyl117HA7w=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.14/scala-library-2.13.14.pom"
+        },
+        {
+          "sha256": "jNEAynuP3ofpBfGKOf/tt0KC4MANuGYA6r2yLOOZ3dA=",
+          "url": "https://repo1.maven.org/maven2/com/lihaoyi/acyclic_2.13.14/0.3.16/acyclic_2.13.14-0.3.16.jar"
+        },
+        {
+          "sha256": "SuaIQdktqu3mr+qEMwLV3ZakymyA0Xd6BONFO76VNpA=",
+          "url": "https://repo1.maven.org/maven2/com/lihaoyi/acyclic_2.13.14/0.3.16/acyclic_2.13.14-0.3.16.pom"
+        },
+        {
+          "sha256": "iEa6qoz0OxsZclq3N6v/FFyljRSk0C511xyo98pfKSY=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.14/scala-reflect-2.13.14.jar"
+        },
+        {
+          "sha256": "CR+yc9Xk6x5pVZh5T1M2YWaN4/Cc0c6q5RhjvbMO7J4=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.14/scala-reflect-2.13.14.pom"
+        }
+      ],
+      "platform": "JVM",
+      "scalaVersion": "2.13.18"
+    }
+  },
+  "version": 7
 }

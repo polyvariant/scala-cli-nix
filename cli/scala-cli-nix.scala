@@ -1,11 +1,11 @@
 //> using scala 3.8.3
 //> using scalacOption -no-indent
-//> using dep io.get-coursier:interface:1.0.29-M3
-//> using dep io.circe::circe-generic:0.14.15
-//> using dep io.circe::circe-parser:0.14.15
-//> using dep org.typelevel::cats-effect:3.7.0
-//> using dep co.fs2::fs2-io:3.13.0
-//> using dep com.github.alexarchambault::case-app:2.1.0
+//> using dep io.get-coursier:interface:1.0.29-M4
+//> using dep io.circe::circe-generic::0.14.15
+//> using dep io.circe::circe-parser::0.14.15
+//> using dep org.typelevel::cats-effect::3.7.0
+//> using dep co.fs2::fs2-io::3.13.0
+//> using dep com.github.alexarchambault::case-app::2.1.0
 
 import cats.effect.ExitCode
 import cats.effect.IO
@@ -31,13 +31,32 @@ import scala.jdk.CollectionConverters.*
 
 case class ArtifactEntry(url: String, sha256: String) derives Codec.AsObject
 
+case class NativeLockDeps(
+    scalaNativeVersion: String,
+    compilerPlugins: List[ArtifactEntry],
+    runtimeDependencies: List[ArtifactEntry],
+    toolingDependencies: List[ArtifactEntry]
+) derives Codec.AsObject
+
+case class TestLock(
+    sources: List[String],
+    libraryDependencies: List[ArtifactEntry]
+) derives Codec.AsObject
+
+case class TargetLock(
+    scalaVersion: String,
+    platform: String,
+    exportHash: String,
+    compiler: List[ArtifactEntry],
+    libraryDependencies: List[ArtifactEntry],
+    native: Option[NativeLockDeps],
+    test: Option[TestLock]
+) derives Codec.AsObject
+
 case class LockFile(
     version: Int,
-    scalaVersion: String,
-    exportHash: String,
     sources: List[String],
-    compiler: List[ArtifactEntry],
-    libraryDependencies: List[ArtifactEntry]
+    targets: Map[String, TargetLock]
 ) derives Codec.AsObject
 
 // --- JSON model (scala-cli export, only the fields we use) ---
@@ -63,8 +82,20 @@ object ExportScope {
   }
 }
 
-case class ExportInfo(scalaVersion: String, scopes: Map[String, ExportScope])
-    derives Decoder
+case class NativeOptionsExport(
+    scalaNativeVersion: String,
+    compilerPlugins: List[ExportDependency],
+    runtimeDependencies: List[ExportDependency],
+    toolingDependencies: List[ExportDependency]
+) derives Decoder
+
+case class ExportInfo(
+    scalaVersion: String,
+    scalaCliVersion: String,
+    platform: Option[String],
+    nativeOptions: Option[NativeOptionsExport],
+    scopes: Map[String, ExportScope]
+) derives Decoder
 
 // --- Console helpers ---
 
@@ -105,22 +136,23 @@ def sha1Hex(s: String): String = {
 
 // --- Process helpers ---
 
-/** Run a process and capture stdout as a string. Stderr is inherited. */
+/** Run a process and capture stdout as a string. Stderr is forwarded to our
+  * stderr.
+  */
 def exec(command: String, args: String*): IO[String] =
   ProcessBuilder(command, args.toList)
     .spawn[IO]
     .use { proc =>
-      proc.stdout
-        .through(fs2.text.utf8.decode)
-        .compile
-        .string
-        .flatTap(_ =>
-          proc.exitValue.flatMap { code =>
-            IO.raiseError(
-              new RuntimeException(s"$command exited with code $code")
-            ).whenA(code != 0)
-          }
-        )
+      val stdout = proc.stdout.through(fs2.text.utf8.decode).compile.string
+      val stderr = proc.stderr.through(fs2.io.stderr[IO]).compile.drain
+      (stdout, stderr).parTupled.flatMap { case (out, _) =>
+        proc.exitValue.flatMap { code =>
+          IO.raiseError(
+            new RuntimeException(s"$command exited with code $code")
+          ).whenA(code != 0)
+            .as(out)
+        }
+      }
     }
 
 /** Run a process, discard output, return exit code. */
@@ -160,7 +192,7 @@ val cacheDir: File = Cache.create().getLocation()
 val cachePath: Path = Path.fromNioPath(cacheDir.toPath)
 
 def cacheFileForUrl(url: String): File = {
-  val relative = url.replaceFirst("://", "/")
+  val relative = url.replaceFirst("://", "/").replace("+", "%2B")
   File(cacheDir, relative)
 }
 
@@ -186,7 +218,7 @@ def findPomForJar(jarUrl: String): IO[Option[Path]] = {
 def urlForCachePath(file: Path): String = {
   val relative = file.toString.stripPrefix(cachePath.toString + "/")
   val proto = relative.takeWhile(_ != '/')
-  val rest = relative.drop(proto.length + 1)
+  val rest = relative.drop(proto.length + 1).replace("%2B", "+")
   s"$proto://$rest"
 }
 
@@ -205,6 +237,8 @@ def extractParent(pomPath: Path): IO[Option[(String, String, String)]] =
     }
   }
 
+// TODO: hardcoded Maven Central URL. Should support custom repositories from
+// scala-cli `using resolvers` directives. Also affects collectDeclaredPoms below.
 def collectParentPoms(pomPath: Path): IO[List[ArtifactEntry]] = {
   def loop(current: Path, acc: List[ArtifactEntry]): IO[List[ArtifactEntry]] =
     extractParent(current).flatMap {
@@ -229,7 +263,73 @@ def collectParentPoms(pomPath: Path): IO[List[ArtifactEntry]] = {
   loop(pomPath, Nil)
 }
 
-def collectEntries(artifacts: List[(Artifact, File)]): IO[List[ArtifactEntry]] =
+/** Pure version of extractDeclaredDeps. Returns (groupId, artifactId, version)
+  * tuples for each <dependency> in the POM's <dependencies> section. Excludes
+  * deps inside <dependencyManagement>. May include unresolved property
+  * placeholders like ${project.version} — caller filters those out.
+  */
+def parseDeclaredDeps(pomContent: String): List[(String, String, String)] = {
+  val withoutManagement =
+    "(?s)<dependencyManagement>.*?</dependencyManagement>".r
+      .replaceAllIn(pomContent, "")
+  val depsBlock = "(?s)<dependencies>\\s*(.*?)</dependencies>".r
+    .findFirstMatchIn(withoutManagement)
+    .map(_.group(1))
+    .getOrElse("")
+  val depPattern = "(?s)<dependency>\\s*(.*?)</dependency>".r
+  depPattern.findAllMatchIn(depsBlock).toList.flatMap { m =>
+    val body = m.group(1)
+    for {
+      g <- "<groupId>(.*?)</groupId>".r.findFirstMatchIn(body).map(_.group(1))
+      a <- "<artifactId>(.*?)</artifactId>".r
+        .findFirstMatchIn(body)
+        .map(_.group(1))
+      v <- "<version>(.*?)</version>".r.findFirstMatchIn(body).map(_.group(1))
+    } yield (g, a, v)
+  }
+}
+
+def extractDeclaredDeps(pomPath: Path): IO[List[(String, String, String)]] =
+  readFile(pomPath).map(parseDeclaredDeps)
+
+/** Walk all resolved POMs to find declared deps and fetch their JAR + POM
+  * individually. This captures evicted versions that scala-cli may try to fetch
+  * during offline resolution.
+  *
+  * Each declared dep is fetched as its own resolution. Unlike
+  * `withTransitive(false)` which fails on some artifacts in the Coursier
+  * interface, this works reliably. Failures are tolerated (e.g. for
+  * placeholder/marker artifacts).
+  */
+def collectDeclaredPoms(
+    resolvedPomPaths: List[Path],
+    resolvedUrls: Set[String]
+): IO[List[ArtifactEntry]] =
+  resolvedPomPaths.flatTraverse(extractDeclaredDeps).flatMap { allDeclared =>
+    val candidates = allDeclared.distinct
+      .filterNot { (_, _, v) => v.contains("$") }
+      // Skip resolved winners (their JAR URL would already appear in resolvedUrls)
+      .filterNot { (g, a, v) =>
+        resolvedUrls.exists { u =>
+          u.contains(s"${g.replace('.', '/')}/$a/$v/")
+        }
+      }
+
+    candidates.flatTraverse { (g, a, v) =>
+      val dep = Dependency.of(g, a, v)
+      fetchArtifacts(dep).attempt.flatMap {
+        case Right(arts) => collectEntriesNoRecurse(arts)
+        case Left(_)     => IO.pure(List.empty[ArtifactEntry])
+      }
+    }
+  }
+
+/** Like collectEntries but does not recursively walk declared deps (avoids
+  * infinite loop).
+  */
+def collectEntriesNoRecurse(
+    artifacts: List[(Artifact, File)]
+): IO[List[ArtifactEntry]] =
   artifacts
     .flatTraverse { (artifact, file) =>
       val url = artifact.getUrl
@@ -256,6 +356,47 @@ def collectEntries(artifacts: List[(Artifact, File)]): IO[List[ArtifactEntry]] =
     }
     .map(_.distinctBy(_.url))
 
+def collectEntries(
+    artifacts: List[(Artifact, File)]
+): IO[List[ArtifactEntry]] = {
+  val resolved: IO[(List[ArtifactEntry], List[Path])] =
+    artifacts.foldLeftM((List.empty[ArtifactEntry], List.empty[Path])) {
+      case ((entries, poms), (artifact, file)) =>
+        val url = artifact.getUrl
+        val artifactPath = Path.fromNioPath(file.toPath)
+
+        sha256Base64(artifactPath).flatMap { jarHash =>
+          val jarEntry = ArtifactEntry(url, jarHash)
+
+          findPomForJar(url).flatMap {
+            case None          => IO.pure((jarEntry :: entries, poms))
+            case Some(pomPath) =>
+              val pomUrl = {
+                val direct = url.replaceFirst("\\.jar$", ".pom")
+                if (cachePathForUrl(direct).toString == pomPath.toString) direct
+                else urlForCachePath(pomPath)
+              }
+              sha256Base64(pomPath).flatMap { pomHash =>
+                collectParentPoms(pomPath).map { parentEntries =>
+                  val newEntries =
+                    jarEntry :: ArtifactEntry(
+                      pomUrl,
+                      pomHash
+                    ) :: parentEntries ++ entries
+                  (newEntries, pomPath :: poms)
+                }
+              }
+          }
+        }
+    }
+
+  for {
+    (entries, pomPaths) <- resolved
+    resolvedUrls = entries.map(_.url).toSet
+    declaredPoms <- collectDeclaredPoms(pomPaths, resolvedUrls)
+  } yield (entries ++ declaredPoms).distinctBy(_.url)
+}
+
 // --- scala-cli helpers ---
 
 val resolveScalaCli: IO[String] =
@@ -263,6 +404,68 @@ val resolveScalaCli: IO[String] =
     case 0 => "real-scala-cli"
     case _ => "scala-cli"
   }
+
+// --- Target discovery ---
+
+/** A cross-build target: one (platform, scalaVersion) combination. */
+case class Target(platform: String, scalaVersion: Option[String]) {
+
+  /** Platform name for the --platform flag (jvm -> jvm, native ->
+    * scala-native).
+    */
+  def platformFlag: String = platform match {
+    case "native" => "scala-native"
+    case other    => other
+  }
+
+  /** Platform name stored in the lockfile (jvm -> JVM, native -> Native). */
+  def platformLock: String = platform match {
+    case "native" => "Native"
+    case _        => "JVM"
+  }
+}
+
+/** One entry in the JSON output of `scala-cli --power list-targets`. */
+case class ListTargetEntry(platform: String, scalaVersion: Option[String])
+    derives Decoder
+
+/** Ask scala-cli for the full build matrix. The CLI emits one entry per
+  * declared (platform, scalaVersion) combination, so we don't have to parse
+  * `using` directives ourselves.
+  */
+def listTargets(scalaCli: String, inputArgs: List[String]): IO[List[Target]] =
+  exec(scalaCli, ("--power" :: "list-targets" :: inputArgs)*)
+    .flatMap { json =>
+      IO.fromEither(
+        parseJson(json)
+          .flatMap(_.as[List[ListTargetEntry]])
+          .leftMap(e =>
+            new RuntimeException(
+              s"Failed to parse list-targets JSON: ${e.getMessage}"
+            )
+          )
+      )
+    }
+    .map(_.map { e =>
+      val platform = e.platform match {
+        case "Native" => "native"
+        case _        => "jvm"
+      }
+      Target(platform, e.scalaVersion)
+    })
+
+/** Compute the lock key for a target given the full target list. */
+def targetKey(target: Target, allTargets: List[Target]): String = {
+  val multiPlatform = allTargets.map(_.platform).distinct.sizeIs > 1
+  val multiVersion = allTargets.map(_.scalaVersion).distinct.sizeIs > 1
+  (multiPlatform, multiVersion) match {
+    case (true, true) =>
+      s"${target.platform}-${target.scalaVersion.getOrElse("default")}"
+    case (true, false)  => target.platform
+    case (false, true)  => target.scalaVersion.getOrElse("default")
+    case (false, false) => target.platform
+  }
+}
 
 // --- Option case classes ---
 
@@ -272,89 +475,122 @@ case class InitOptions()
 // --- Lock command ---
 
 val hashPrinter: Printer = Printer.noSpaces.copy(sortKeys = true)
-val lockfilePrinter: Printer = Printer.spaces2.copy(sortKeys = true)
+val lockfilePrinter: Printer =
+  Printer.spaces2.copy(sortKeys = true, colonLeft = "", dropNullValues = true)
 
-/** Compute lockfile content without writing it. Returns None if up to date. */
-def computeLock(inputs: List[String]): IO[Option[String]] = {
+/** Compute lockfile content without writing it. Always recomputes from scratch.
+  */
+def computeLock(inputs: List[String]): IO[String] = {
   val inputArgs = if (inputs.isEmpty) List(".") else inputs
 
   for {
     scalaCli <- resolveScalaCli
     cwd <- Files[IO].currentWorkingDirectory
-    lockfilePath = cwd / "scala.lock.json"
 
-    _ <- step("Exporting project info...")
-    exportJson <- exec(
-      scalaCli,
-      ("--power" :: "export" :: "--json" :: "--server=false" :: "--offline" :: inputArgs)*
+    targets <- listTargets(scalaCli, inputArgs)
+
+    _ <- info(
+      s"Targets: ${C.bold}${targets.map(t => targetKey(t, targets)).mkString(", ")}${C.reset}"
     )
 
+    // Read sources once from any target's export (they're shared across targets, at least for now that's the assumption)
+    _ <- step("Discovering sources...")
+    firstTarget = targets.head
+    firstExportJson <- exec(
+      scalaCli,
+      ("--power" :: "export" :: "--json" :: "--server=false" :: "--offline" ::
+        "--platform" :: firstTarget.platformFlag ::
+        firstTarget.scalaVersion.toList
+          .flatMap(v => List("--scala-version", v)) ++
+        inputArgs)*
+    )
+    firstExport <- IO.fromEither(
+      parseJson(firstExportJson)
+        .flatMap(_.as[ExportInfo])
+        .leftMap(e =>
+          new RuntimeException(s"Failed to parse export JSON: ${e.getMessage}")
+        )
+    )
+    sources = firstExport
+      .scopes
+      .getOrElse("main", ExportScope(Nil, Nil))
+      .sources
+      .map(stripCwd(cwd))
+
+    targetLocks <- targets.traverse { target =>
+      val key = targetKey(target, targets)
+      computeTargetLock(scalaCli, inputArgs, cwd, target, key).map(key -> _)
+    }
+
+    lockFile = LockFile(
+      version = 7,
+      sources = sources,
+      targets = targetLocks.toMap
+    )
+  } yield lockfilePrinter.print(lockFile.asJson) + "\n"
+}
+
+private def computeTargetLock(
+    scalaCli: String,
+    inputArgs: List[String],
+    cwd: Path,
+    target: Target,
+    key: String
+): IO[TargetLock] = {
+  val versionArgs =
+    target.scalaVersion.toList.flatMap(v => List("--scala-version", v))
+  val exportArgs =
+    "--power" :: "export" :: "--json" :: "--server=false" :: "--offline" ::
+      "--platform" :: target.platformFlag :: versionArgs ++ inputArgs
+
+  for {
+    _ <- step(s"Exporting target ${C.bold}$key${C.reset}...")
+    exportJson <- exec(scalaCli, exportArgs*)
     rawJson <- IO.fromEither(
       parseJson(exportJson).leftMap(e =>
         new RuntimeException(s"Failed to parse export JSON: ${e.message}")
       )
     )
-    canonicalExport = hashPrinter.print(rawJson)
-    exportHash = sha1Hex(canonicalExport + "\n")
-
-    lockExists <- Files[IO].exists(lockfilePath)
-    isUpToDate <-
-      if (lockExists)
-        readFile(lockfilePath).map { content =>
-          parseJson(content).toOption
-            .flatMap(_.hcursor.get[String]("exportHash").toOption)
-            .contains(exportHash)
-        }
-      else
-        IO.pure(false)
-
-    result <-
-      if (isUpToDate)
-        info("Lock is up to date.").as(None)
-      else {
-        val exportInfo = rawJson
-          .as[ExportInfo]
-          .leftMap(e =>
-            new RuntimeException(s"Failed to decode export JSON: ${e.message}")
-          )
-        IO.fromEither(exportInfo)
-          .flatMap(computeLockContent(scalaCli, inputArgs, _, exportHash, cwd))
-          .map(Some(_))
-      }
+    exportHash = sha1Hex(hashPrinter.print(rawJson) + "\n")
+    export_ <- IO.fromEither(
+      rawJson
+        .as[ExportInfo]
+        .leftMap(e =>
+          new RuntimeException(s"Failed to decode export JSON: ${e.message}")
+        )
+    )
+    result <- computeTargetLockContent(
+      scalaCli,
+      inputArgs,
+      cwd,
+      target,
+      key,
+      export_,
+      exportHash
+    )
   } yield result
 }
 
-def lock(inputs: List[String]): IO[ExitCode] =
-  computeLock(inputs).flatMap {
-    case None => IO.pure(ExitCode.Success)
-    case Some(content) =>
-      for {
-        cwd <- Files[IO].currentWorkingDirectory
-        _ <- step("Writing lockfile...")
-        _ <- writeFile(cwd / "scala.lock.json", content)
-        _ <- success(s"Wrote ${C.bold}scala.lock.json${C.reset}")
-      } yield ExitCode.Success
-  }
+private def stripCwd(cwd: Path)(s: String): String =
+  s.stripPrefix(cwd.toString + "/")
+    .stripPrefix("/private" + cwd.toString + "/")
 
-private def computeLockContent(
+private def computeTargetLockContent(
     scalaCli: String,
     inputArgs: List[String],
+    cwd: Path,
+    target: Target,
+    key: String,
     export_ : ExportInfo,
-    exportHash: String,
-    cwd: Path
-): IO[String] = {
+    exportHash: String
+): IO[TargetLock] = {
   val scalaVersion = export_.scalaVersion
+  val scalaMajor = scalaVersion.takeWhile(_ != '.')
   val mainScope = export_.scopes.getOrElse("main", ExportScope(Nil, Nil))
-  val sources = mainScope.sources.map { s =>
-    s
-      .stripPrefix(cwd.toString + "/")
-      .stripPrefix("/private" + cwd.toString + "/")
-  }
+  val testScope = export_.scopes.get("test")
   val deps = mainScope.dependencies.map { d =>
     s"${d.groupId}:${d.artifactId.fullName}:${d.version}"
   }
-
-  val scalaMajor = scalaVersion.takeWhile(_ != '.')
 
   scalaMajor match {
     case "3" | "2" =>
@@ -371,9 +607,12 @@ private def computeLockContent(
           )
       }
 
+      def toDeps(eds: List[ExportDependency]): List[Dependency] =
+        eds.map(d => Dependency.of(d.groupId, d.artifactId.fullName, d.version))
+
       for {
         _ <- info(s"Scala version: ${C.bold}$scalaVersion${C.reset}")
-        _ <- info(s"Sources: ${C.bold}${sources.size}${C.reset} files")
+        _ <- info(s"Platform: ${C.bold}${target.platformLock}${C.reset}")
         _ <- info(s"Found ${C.bold}${deps.size}${C.reset} dependencies")
 
         _ <- step("Fetching compiler dependencies...")
@@ -383,28 +622,109 @@ private def computeLockContent(
         )
 
         _ <- step("Fetching library dependencies...")
-        libDeps = libraryArtifact +: deps.map { dep =>
+        userDeps = deps.map { dep =>
           val parts = dep.split(":")
           Dependency.of(parts(0), parts(1), parts(2))
         }
-        libArtifacts <- fetchArtifacts(libDeps*)
+        allLibDeps = libraryArtifact +: userDeps
+        libArtifacts <- fetchArtifacts(allLibDeps*)
         _ <- info(
           s"Libraries: ${C.bold}${libArtifacts.size}${C.reset} artifacts (transitive)"
         )
 
+        nativeLockDeps <- export_.nativeOptions.traverse { opts =>
+          // Compiler plugins + runtime deps resolved together, separately from user libs.
+          // This ensures they stay at scalaNativeVersion and don't get evicted by user deps.
+          val nativeDeps =
+            toDeps(opts.compilerPlugins) ++ toDeps(opts.runtimeDependencies)
+
+          for {
+            _ <- step("Fetching native dependencies...")
+            nativeArtifacts <- fetchArtifacts(nativeDeps*)
+            _ <- info(
+              s"Native: ${C.bold}${nativeArtifacts.size}${C.reset} artifacts"
+            )
+            _ <- step("Fetching native tooling dependencies...")
+            toolingArtifacts <- fetchArtifacts(
+              toDeps(opts.toolingDependencies)*
+            )
+            _ <- info(
+              s"Native tooling: ${C.bold}${toolingArtifacts.size}${C.reset} artifacts"
+            )
+            nativeEntries <- collectEntries(nativeArtifacts)
+            toolingEntries <- collectEntries(toolingArtifacts)
+          } yield NativeLockDeps(
+            opts.scalaNativeVersion,
+            nativeEntries,
+            Nil,
+            toolingEntries
+          )
+        }
+
+        // Test scope: scala-cli's test scope includes both main and test
+        // dependencies in a single combined resolution. We capture the full
+        // transitive set as the test classpath. We also include scala-cli's
+        // own test-runner module (and on Native, scala-native's test-interface)
+        // because scala-cli adds those at test time but does not list them in
+        // `export --json`.
+        testLock <- testScope
+          .filter(s => s.sources.nonEmpty || s.dependencies != mainScope.dependencies)
+          .traverse { tScope =>
+            val testDeps = tScope.dependencies.map(d =>
+              Dependency.of(d.groupId, d.artifactId.fullName, d.version)
+            )
+            // For JVM tests, scala-cli adds an `org.virtuslab.scala-cli:test-runner_<scalaBinary>` dep
+            // at test time. It is not listed in `export --json`, so we add it explicitly.
+            // For Native tests, scala-cli pulls `org.scala-native::test-interface` transitively
+            // through the test framework (e.g. munit-native), so no extra runner dep is needed.
+            val testRunnerDep =
+              Option.when(target.platform == "jvm") {
+                val module = scalaMajor match {
+                  case "3" => "test-runner_3"
+                  case _   =>
+                    val binary = scalaVersion.split('.').take(2).mkString(".")
+                    s"test-runner_$binary"
+                }
+                // The test-runner is published per scala-cli release on Maven Central.
+                // For SNAPSHOT/NIGHTLY scala-cli builds the matching runner isn't there,
+                // so the user can override via SCALA_CLI_NIX_RUNNER_VERSION (typically
+                // the previous stable scala-cli release).
+                val runnerVersion = sys
+                  .env
+                  .getOrElse("SCALA_CLI_NIX_RUNNER_VERSION", export_.scalaCliVersion)
+                Dependency.of(
+                  "org.virtuslab.scala-cli",
+                  module,
+                  runnerVersion
+                )
+              }
+            val allTestDeps =
+              libraryArtifact +: (testRunnerDep.toList ++ testDeps)
+            for {
+              _ <- step("Fetching test dependencies...")
+              testArtifacts <- fetchArtifacts(allTestDeps*)
+              _ <- info(
+                s"Test: ${C.bold}${testArtifacts.size}${C.reset} artifacts (transitive)"
+              )
+              testEntries <- collectEntries(testArtifacts)
+            } yield TestLock(
+              sources = tScope.sources.map(stripCwd(cwd)),
+              libraryDependencies = testEntries
+            )
+          }
+
         _ <- step("Hashing artifacts...")
         compilerEntries <- collectEntries(compilerArtifacts)
         libEntries <- collectEntries(libArtifacts)
-
-        lockFile = LockFile(
-          version = 4,
-          scalaVersion = scalaVersion,
-          exportHash = exportHash,
-          sources = sources,
-          compiler = compilerEntries,
-          libraryDependencies = libEntries
-        )
-      } yield lockfilePrinter.print(lockFile.asJson) + "\n"
+      } yield TargetLock(
+        scalaVersion = scalaVersion,
+        platform = target.platformLock,
+        exportHash = exportHash,
+        compiler = compilerEntries,
+        libraryDependencies = libEntries,
+        native = nativeLockDeps,
+        test = testLock
+      )
 
     case _ =>
       error(
@@ -417,6 +737,23 @@ private def computeLockContent(
         )
   }
 }
+
+def lock(inputs: List[String]): IO[ExitCode] =
+  for {
+    content <- computeLock(inputs)
+    cwd <- Files[IO].currentWorkingDirectory
+    lockfilePath = cwd / "scala.lock.json"
+    existingContent <- Files[IO]
+      .exists(lockfilePath)
+      .ifM(readFile(lockfilePath), IO.pure(""))
+    _ <-
+      if (existingContent == content)
+        info("Lock is up to date.")
+      else
+        step("Writing lockfile...") *>
+          writeFile(lockfilePath, content) *>
+          success(s"Wrote ${C.bold}scala.lock.json${C.reset}")
+  } yield ExitCode.Success
 
 // --- Init command ---
 
@@ -447,16 +784,19 @@ def init(inputs: List[String]): IO[ExitCode] =
 private def doInit(cwd: Path): IO[ExitCode] = {
   val pname = cwd.fileName.toString
 
-  val prepareDerivation: IO[(List[(Path, String)], List[String])] =
+  def prepareDerivation(
+      isCross: Boolean
+  ): IO[(List[(Path, String)], List[String])] =
     Files[IO].exists(cwd / "derivation.nix").flatMap {
       case true =>
         warn("derivation.nix already exists, skipping.")
           .as((Nil, Nil))
       case false =>
+        val buildFn = if (isCross) "buildScalaCliApps" else "buildScalaCliApp"
         val content =
           s"""{ scala-cli-nix }:
              |
-             |scala-cli-nix.buildScalaCliApp {
+             |scala-cli-nix.$buildFn {
              |  pname = "$pname";
              |  version = "0.1.0";
              |  src = ./.;
@@ -468,7 +808,7 @@ private def doInit(cwd: Path): IO[ExitCode] = {
         )
     }
 
-  val prepareFlake: IO[(List[(Path, String)], List[String])] =
+  def prepareFlake(isCross: Boolean): IO[(List[(Path, String)], List[String])] =
     Files[IO].exists(cwd / "flake.nix").flatMap {
       case true =>
         errln("") *>
@@ -492,61 +832,105 @@ private def doInit(cwd: Path): IO[ExitCode] = {
           ) *>
           errln(s"    ${C.dim}};${C.reset}") *>
           errln("") *>
-          errln(s"  ${C.bold}3.${C.reset} Add the package:") *>
+          errln(s"  ${C.bold}3.${C.reset} Add the package(s):") *>
           errln("") *>
           errln(
-            s"    ${C.dim}packages.default = pkgs.callPackage ./derivation.nix { };${C.reset}"
+            if (isCross)
+              s"    ${C.dim}# buildScalaCliApps returns an attrset — flatten into packages:${C.reset}\n" +
+                s"    ${C.dim}pkgs.callPackage ./derivation.nix { }${C.reset}"
+            else
+              s"    ${C.dim}packages.default = pkgs.callPackage ./derivation.nix { };${C.reset}"
           ) *>
           errln("") *>
           errln(
-            s"  ${C.bold}4.${C.reset} Add to your devShell (uses wrapped scala-cli with auto-locking):"
+            s"  ${C.bold}4.${C.reset} Expose tests as checks (so ${C.dim}nix flake check${C.reset} runs them):"
+          ) *>
+          errln("") *>
+          errln(
+            s"    ${C.dim}checks.$${system} = builtins.foldl' (acc: name:${C.reset}"
+          ) *>
+          errln(
+            s"    ${C.dim}  acc // builtins.mapAttrs (n: drv: { \"$${name}-$${n}\" = drv; })${C.reset}"
+          ) *>
+          errln(
+            s"    ${C.dim}    (self.packages.$${system}.$${name}.passthru.tests or {})${C.reset}"
+          ) *>
+          errln(
+            s"    ${C.dim}) {} (builtins.attrNames self.packages.$${system});${C.reset}"
+          ) *>
+          errln("") *>
+          errln(
+            s"  ${C.bold}5.${C.reset} Add to your devShell (uses wrapped scala-cli with auto-locking):"
           ) *>
           errln("") *>
           errln(s"    ${C.dim}pkgs.scala-cli${C.reset}") *>
           errln(s"    ${C.dim}pkgs.scala-cli-nix-cli${C.reset}") *>
           errln("").as((Nil, Nil))
       case false =>
+        // For cross projects, flatten the attrset from buildScalaCliApps into named packages
+        // (e.g. packages.${system}.jvm, packages.${system}.native) — no default package.
+        val packagesBody =
+          if (isCross)
+            """|          pkgs.callPackage ./derivation.nix { }"""
+          else
+            """|          default = pkgs.callPackage ./derivation.nix { };"""
         val content =
-          """|{
-             |  inputs = {
-             |    nixpkgs.url = "github:NixOS/nixpkgs";
-             |    scala-cli-nix.url = "github:scala-nix/scala-cli-nix";
-             |    scala-cli-nix.inputs.nixpkgs.follows = "nixpkgs";
-             |  };
-             |
-             |  outputs = { nixpkgs, scala-cli-nix, ... }:
-             |    let
-             |      forAllSystems = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" ];
-             |    in {
-             |      packages = forAllSystems (system:
-             |        let
-             |          pkgs = import nixpkgs {
-             |            inherit system;
-             |            overlays = [ scala-cli-nix.overlays.default ];
-             |          };
-             |        in {
-             |          default = pkgs.callPackage ./derivation.nix { };
-             |        }
-             |      );
-             |
-             |      devShells = forAllSystems (system:
-             |        let
-             |          pkgs = import nixpkgs {
-             |            inherit system;
-             |            overlays = [ scala-cli-nix.overlays.default ];
-             |          };
-             |        in {
-             |          default = pkgs.mkShell {
-             |            buildInputs = [
-             |              pkgs.scala-cli
-             |              pkgs.scala-cli-nix-cli
-             |            ];
-             |          };
-             |        }
-             |      );
-             |    };
-             |}
-             |""".stripMargin
+          s"""|{
+              |  inputs = {
+              |    nixpkgs.url = "github:NixOS/nixpkgs";
+              |    scala-cli-nix.url = "github:scala-nix/scala-cli-nix";
+              |    scala-cli-nix.inputs.nixpkgs.follows = "nixpkgs";
+              |  };
+              |
+              |  outputs = { self, nixpkgs, scala-cli-nix, ... }:
+              |    let
+              |      forAllSystems = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" ];
+              |    in {
+              |      packages = forAllSystems (system:
+              |        let
+              |          pkgs = import nixpkgs {
+              |            inherit system;
+              |            overlays = [ scala-cli-nix.overlays.default ];
+              |          };
+              |        in {
+              |$packagesBody
+              |          }
+              |      );
+              |
+              |      # Pull `passthru.tests` from every package into checks, so
+              |      # `nix flake check` runs the test scope of each target.
+              |      checks = forAllSystems (system:
+              |        let
+              |          packages = self.packages.$${system};
+              |          collect = pkgName: pkg:
+              |            let tests = pkg.passthru.tests or {};
+              |            in nixpkgs.lib.mapAttrs'
+              |              (testName: drv: { name = "$${pkgName}-$${testName}"; value = drv; })
+              |              tests;
+              |        in nixpkgs.lib.foldl'
+              |          (acc: pkgName: acc // collect pkgName packages.$${pkgName})
+              |          {}
+              |          (builtins.attrNames packages)
+              |      );
+              |
+              |      devShells = forAllSystems (system:
+              |        let
+              |          pkgs = import nixpkgs {
+              |            inherit system;
+              |            overlays = [ scala-cli-nix.overlays.default ];
+              |          };
+              |        in {
+              |          default = pkgs.mkShell {
+              |            buildInputs = [
+              |              pkgs.scala-cli
+              |              pkgs.scala-cli-nix-cli
+              |            ];
+              |          };
+              |        }
+              |      );
+              |    };
+              |}
+              |""".stripMargin
         IO.pure((List(cwd / "flake.nix" -> content), List("flake.nix")))
     }
 
@@ -556,18 +940,22 @@ private def doInit(cwd: Path): IO[ExitCode] = {
       s"${C.bold}Initializing scala-cli-nix project: ${C.green}$pname${C.reset}"
     )
     _ <- errln("")
-    derivation <- prepareDerivation
-    flake <- prepareFlake
+    scalaCli <- resolveScalaCli
+    targets <- listTargets(scalaCli, Nil)
+    isCross = targets.sizeIs > 1
+    derivation <- prepareDerivation(isCross)
+    flake <- prepareFlake(isCross)
     _ <- errln("")
     lockContent <- computeLock(Nil)
     pendingFiles =
-      derivation._1 ++ flake._1 ++ lockContent
-        .map(c => (cwd / "scala.lock.json") -> c)
-        .toList
-    fileNames = derivation._2 ++ flake._2 ++
-      lockContent.map(_ => "scala.lock.json").toList
+      derivation._1 ++ flake._1 ++ List(
+        (cwd / "scala.lock.json") -> lockContent
+      )
+    fileNames = derivation._2 ++ flake._2 ++ List("scala.lock.json")
     _ <- step("Writing files...")
-    _ <- pendingFiles.traverse_ { case (path, content) => writeFile(path, content) }
+    _ <- pendingFiles.traverse_ { case (path, content) =>
+      writeFile(path, content)
+    }
     _ <- pendingFiles.traverse_ { case (path, _) =>
       success(s"Wrote ${C.bold}${path.fileName}${C.reset}")
     }
