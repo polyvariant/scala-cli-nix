@@ -1,6 +1,6 @@
 //> using scala 3.8.3
 //> using scalacOption -no-indent
-//> using dep io.get-coursier:interface:1.0.29-M3
+//> using dep io.get-coursier:interface:1.0.29-M4
 //> using dep io.circe::circe-generic::0.14.15
 //> using dep io.circe::circe-parser::0.14.15
 //> using dep org.typelevel::cats-effect::3.7.0

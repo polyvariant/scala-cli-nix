@@ -386,7 +386,7 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.1/scala-reflect-2.13.1.pom"
         }
       ],
-      "exportHash": "175e86a0db92dd976a26684142d1938e6e94a989",
+      "exportHash": "832c620e7dd28acadcbcba8e3ba6f2de4c72a458",
       "libraryDependencies": [
         {
           "sha256": "wnUda2sCZQ5WBltrWv/BFt4Yb5yOR1GdW8WHKJkfzkE=",
@@ -569,12 +569,12 @@
           "url": "https://repo1.maven.org/maven2/org/typelevel/cats-effect_3/3.7.0/cats-effect_3-3.7.0.pom"
         },
         {
-          "sha256": "pHAcNh56Eml5xcQi0js/WwxvYvBZOtDhyhjT2Y95gb8=",
-          "url": "https://repo1.maven.org/maven2/io/get-coursier/interface/1.0.29-M3/interface-1.0.29-M3.jar"
+          "sha256": "qRc/g0gAX3pkrkdIhUxHPorNw0M6+tDNN9ghZ67Ccvw=",
+          "url": "https://repo1.maven.org/maven2/io/get-coursier/interface/1.0.29-M4/interface-1.0.29-M4.jar"
         },
         {
-          "sha256": "Bw7YSwMSEt+5jWwqo+k7u/KMa3KlxiLYDn0f1Rl30aE=",
-          "url": "https://repo1.maven.org/maven2/io/get-coursier/interface/1.0.29-M3/interface-1.0.29-M3.pom"
+          "sha256": "XdS5oGdGNeCA5gcXZX2gDwVPPcnVAeiq4lizAPOKFEA=",
+          "url": "https://repo1.maven.org/maven2/io/get-coursier/interface/1.0.29-M4/interface-1.0.29-M4.pom"
         },
         {
           "sha256": "D0s4BvV78IqILzGzvDcuPj5ircnpwxwrPHjRYHJZ4r8=",
