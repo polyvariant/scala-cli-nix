@@ -1,6 +1,6 @@
 { scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib, clang, which }:
 let
-  supportedVersion = 6;
+  supportedVersion = 7;
 
   fetchAll = deps: builtins.map (dep: { inherit dep; path = builtins.fetchurl dep; }) deps;
 
@@ -13,10 +13,13 @@ let
         then builtins.throw "scala-cli-nix: unsupported lockfile version ${builtins.toString lockVersion} (expected ${builtins.toString supportedVersion}). Re-run 'scala-cli-nix lock' to regenerate."
         else true;
       native = target: target.native or null;
+      test = target: target.test or null;
     in assert versionCheck; {
       sources = json.sources or [];
       targets = builtins.mapAttrs (name: target:
-        let n = native target;
+        let
+          n = native target;
+          t = test target;
         in {
           inherit (target) platform scalaVersion;
           # Each builtins.fetchurl is its own FOD — per-artifact granularity
@@ -25,6 +28,13 @@ let
           nativeCompilerPlugins = if n != null then fetchAll n.compilerPlugins else [];
           nativeRuntimeDependencies = if n != null then fetchAll n.runtimeDependencies else [];
           nativeToolingDependencies = if n != null then fetchAll n.toolingDependencies else [];
+          test =
+            if t != null
+            then {
+              sources = t.sources;
+              libraryDependencies = fetchAll t.libraryDependencies;
+            }
+            else null;
         }
       ) json.targets;
     };
@@ -44,7 +54,8 @@ let
       ) deps;
     in runCommand name {} (builtins.concatStringsSep "\n" linkCommands);
 
-  # Common source filtering and args, shared by JVM and Native builders
+  # Filter `src` down to the listed source files, returning both the filtered
+  # source tree and a space-separated string of source paths to feed scala-cli.
   prepareSources = sources: src:
     let
       filteredSrc =
@@ -68,6 +79,70 @@ let
   platformFlag = platform:
     if platform == "Native" then "scala-native" else "jvm";
 
+  # Common scala-cli sandbox env setup, shared by JVM/Native build and test phases
+  scalaCliEnvSetup = ''
+    export HOME=$TMPDIR/home
+    export COURSIER_ARCHIVE_CACHE=$TMPDIR/coursier-arc
+    export SCALA_CLI_HOME=$TMPDIR/scala-cli-home
+    mkdir -p $HOME $COURSIER_ARCHIVE_CACHE $SCALA_CLI_HOME
+  '';
+
+  buildJvmTest = { pname, version, src, sources, fetched, attrOverrides }:
+    let
+      mainAndTestSources = sources ++ fetched.test.sources;
+      inherit (prepareSources mainAndTestSources src) sourceArgs;
+      # Test classpath was resolved combining main + test deps in a single
+      # Coursier resolution; it is sufficient on its own.
+      allDeps = fetched.compiler ++ fetched.test.libraryDependencies;
+      depsCache = mkCacheDir "scala-cli-test-deps-${pname}" allDeps;
+    in stdenv.mkDerivation (attrOverrides ({
+      pname = "${pname}-test";
+      inherit version;
+      dontUnpack = true;
+      buildInputs = [ scala-cli openjdk ];
+      COURSIER_CACHE = depsCache;
+      buildPhase = scalaCliEnvSetup + ''
+        scala-cli --power test ${sourceArgs} --server=false --offline \
+          --platform ${platformFlag fetched.platform} \
+          --scala-version ${fetched.scalaVersion}
+      '';
+      installPhase = ''
+        mkdir -p $out
+        touch $out/passed
+      '';
+    }) "JVM");
+
+  buildNativeTest = { pname, version, src, sources, fetched, attrOverrides }:
+    let
+      mainAndTestSources = sources ++ fetched.test.sources;
+      inherit (prepareSources mainAndTestSources src) sourceArgs;
+      allDeps = fetched.compiler ++ fetched.test.libraryDependencies
+        ++ fetched.nativeCompilerPlugins ++ fetched.nativeRuntimeDependencies ++ fetched.nativeToolingDependencies;
+      depsCache = mkCacheDir "scala-cli-test-deps-${pname}" allDeps;
+    in stdenv.mkDerivation (attrOverrides ({
+      pname = "${pname}-test";
+      inherit version;
+      dontUnpack = true;
+      buildInputs = [ scala-cli openjdk clang which ];
+      COURSIER_CACHE = depsCache;
+      buildPhase = scalaCliEnvSetup + ''
+        scala-cli --power test ${sourceArgs} --server=false --offline \
+          --platform ${platformFlag fetched.platform} \
+          --scala-version ${fetched.scalaVersion}
+      '';
+      installPhase = ''
+        mkdir -p $out
+        touch $out/passed
+      '';
+    }) "Native");
+
+  # Build the test derivation attrset for passthru.tests, or {} if no tests.
+  mkTests = { pname, version, src, sources, fetched, attrOverrides }:
+    if fetched.test == null then {}
+    else if fetched.platform == "Native"
+    then { test = buildNativeTest { inherit pname version src sources fetched attrOverrides; }; }
+    else { test = buildJvmTest { inherit pname version src sources fetched attrOverrides; }; };
+
   buildJvmApp = { pname, version, src, sources, fetched, mainClass, attrOverrides }:
     let
       inherit (prepareSources sources src) sourceArgs;
@@ -86,12 +161,7 @@ let
 
         COURSIER_CACHE = depsCache;
 
-        buildPhase = ''
-          export HOME=$TMPDIR/home
-          export COURSIER_ARCHIVE_CACHE=$TMPDIR/coursier-arc
-          export SCALA_CLI_HOME=$TMPDIR/scala-cli-home
-          mkdir -p $HOME $COURSIER_ARCHIVE_CACHE $SCALA_CLI_HOME
-
+        buildPhase = scalaCliEnvSetup + ''
           scala-cli --power package ${sourceArgs} --server=false --offline --library \
             --platform ${platformFlag fetched.platform} \
             --scala-version ${fetched.scalaVersion} \
@@ -119,10 +189,13 @@ let
         then mainClass
         else builtins.readFile "${compiledJar}/share/main-class";
 
+      tests = mkTests { inherit pname version src sources fetched attrOverrides; };
+
     in stdenv.mkDerivation (attrOverrides ({
       inherit pname version;
       dontUnpack = true;
       buildInputs = [ openjdk makeWrapper ];
+      passthru = { inherit tests; };
       installPhase = ''
         mkdir -p $out/bin
         makeWrapper ${openjdk}/bin/java $out/bin/${pname} \
@@ -136,19 +209,18 @@ let
       allDeps = fetched.compiler ++ fetched.libraryDependencies
         ++ fetched.nativeCompilerPlugins ++ fetched.nativeRuntimeDependencies ++ fetched.nativeToolingDependencies;
       depsCache = mkCacheDir "scala-cli-deps-${pname}" allDeps;
+
+      tests = mkTests { inherit pname version src sources fetched attrOverrides; };
     in stdenv.mkDerivation (attrOverrides ({
       inherit pname version;
       dontUnpack = true;
       buildInputs = [ scala-cli openjdk clang which ];
+      passthru = { inherit tests; };
 
       COURSIER_CACHE = depsCache;
 
-      buildPhase = ''
-        export HOME=$TMPDIR/home
-        export COURSIER_ARCHIVE_CACHE=$TMPDIR/coursier-arc
-        export SCALA_CLI_HOME=$TMPDIR/scala-cli-home
-        mkdir -p $HOME $COURSIER_ARCHIVE_CACHE $SCALA_CLI_HOME $out/bin
-
+      buildPhase = scalaCliEnvSetup + ''
+        mkdir -p $out/bin
         scala-cli --power package ${sourceArgs} --server=false --offline \
           --platform ${platformFlag fetched.platform} \
           --scala-version ${fetched.scalaVersion} \

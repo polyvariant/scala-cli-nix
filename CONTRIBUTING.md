@@ -14,14 +14,14 @@ Implemented in `cli/scala-cli-nix.scala` (Scala 3). The CLI is itself built by `
 4. For each JAR, the adjacent POM is found in the Coursier cache. Parent POMs are discovered by walking the `<parent>` chain using regex. SHA-256 hashes are computed in-process via `java.security.MessageDigest` — no `nix hash file` needed.
 5. The output is `scala.lock.json` with one section per target.
 
-#### Lockfile format (`scala.lock.json`, version 6)
+#### Lockfile format (`scala.lock.json`, version 7)
 
 The lockfile uses a multi-target format. Each target (a platform/Scala version combination) has its own section under the `targets` key.
 
 **Cross-platform example** (1 Scala version, 2 platforms):
 ```json
 {
-  "version": 6,
+  "version": 7,
   "sources": ["hello.scala"],
   "targets": {
     "jvm": {
@@ -51,7 +51,7 @@ The lockfile uses a multi-target format. Each target (a platform/Scala version c
 **Single-target example** (standard JVM project):
 ```json
 {
-  "version": 6,
+  "version": 7,
   "sources": ["foo.scala"],
   "targets": {
     "jvm": {
@@ -64,6 +64,18 @@ The lockfile uses a multi-target format. Each target (a platform/Scala version c
   }
 }
 ```
+
+**Test scope** is captured per target as an optional `test` block, omitted when there are no test sources or test-only deps:
+```json
+"jvm": {
+  ...,
+  "test": {
+    "sources": ["foo.test.scala"],
+    "libraryDependencies": [...]
+  }
+}
+```
+`test.libraryDependencies` is the full transitive resolution of main+test deps as a single Coursier resolution (matching scala-cli's own `Scope.Test` resolution model). For JVM tests we additionally pin scala-cli's `org.virtuslab.scala-cli:test-runner_<scalaBinary>` because scala-cli adds it at test time but does not list it in `export --json`. The runner version comes from the export's `scalaCliVersion`; users on a SNAPSHOT/NIGHTLY scala-cli can pin a stable runner via `SCALA_CLI_NIX_RUNNER_VERSION`. For Native tests, `test-interface` is pulled in transitively by the test framework (e.g. munit-native), so no explicit runner dep is added.
 
 ##### Target key naming
 
@@ -78,12 +90,13 @@ Target keys use only the dimensions that vary:
 
 ##### Field reference
 
-- `version` — schema version (6). Checked at build time; mismatch causes a build error directing the user to re-lock.
+- `version` — schema version (7). Checked at build time; mismatch causes a build error directing the user to re-lock.
 - `sources` — top-level, shared across targets. Lists source files relative to the project root.
 - `targets.<key>.exportHash` — SHA-1 hex digest of the canonicalized (sorted keys, no spaces) `scala-cli export --json` output for this target, followed by a newline. Used for per-target staleness detection.
 - `targets.<key>.platform` — `"JVM"` or `"Native"`. Determines the build strategy.
 - `targets.<key>.compiler` / `libraryDependencies` — JARs, their POMs, and parent POMs. Parent POMs are needed because Coursier resolves version inheritance from parent POMs during offline resolution.
 - `targets.<key>.native` — present for Scala Native targets. Its three sub-fields (`compilerPlugins`, `runtimeDependencies`, `toolingDependencies`) are resolved independently because tooling dependencies target Scala 2.12, while the others use the project's Scala version.
+- `targets.<key>.test` — optional. Present when the project has test sources or test-only deps. Contains `sources` (test source files) and `libraryDependencies` (full main+test classpath; reuses the target's `compiler` and `native` blocks).
 
 #### Coursier cache path structure
 
@@ -109,6 +122,8 @@ The lock script reconstructs URLs by stripping the cache prefix and re-adding `:
 
 - `buildScalaCliApp { pname, version, src, lockFile, mainClass?, target? }` — builds a single target, returning one derivation. If the lockfile has multiple targets, `target` must be specified (e.g. `target = "jvm"`). If the lockfile has exactly one target, it is selected automatically.
 - `buildScalaCliApps { pname, version, src, lockFile, mainClass? }` — builds all targets, returning an attrset of derivations keyed by target name (dots normalized to underscores, e.g. `{ jvm = <drv>; native = <drv>; }`).
+
+Each returned derivation carries `passthru.tests` — an attrset (currently `{ test = <drv>; }`) of test-runner derivations. The test derivation runs `scala-cli test --offline --server=false` against the project's test sources using a deps cache built from the lockfile's `test.libraryDependencies`. Tests are skipped (the attrset is empty) when the lockfile has no `test` section for that target. The `init` command's generated flake wires every package's `passthru.tests` into `checks` so `nix flake check` runs them.
 
 The `mainClass` parameter (JVM only) is only needed when the project has multiple main classes — otherwise it is discovered automatically at build time.
 

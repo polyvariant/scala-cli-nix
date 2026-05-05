@@ -38,13 +38,19 @@ case class NativeLockDeps(
     toolingDependencies: List[ArtifactEntry]
 ) derives Codec.AsObject
 
+case class TestLock(
+    sources: List[String],
+    libraryDependencies: List[ArtifactEntry]
+) derives Codec.AsObject
+
 case class TargetLock(
     scalaVersion: String,
     platform: String,
     exportHash: String,
     compiler: List[ArtifactEntry],
     libraryDependencies: List[ArtifactEntry],
-    native: Option[NativeLockDeps]
+    native: Option[NativeLockDeps],
+    test: Option[TestLock]
 ) derives Codec.AsObject
 
 case class LockFile(
@@ -85,6 +91,7 @@ case class NativeOptionsExport(
 
 case class ExportInfo(
     scalaVersion: String,
+    scalaCliVersion: String,
     platform: Option[String],
     nativeOptions: Option[NativeOptionsExport],
     scopes: Map[String, ExportScope]
@@ -504,14 +511,11 @@ def computeLock(inputs: List[String]): IO[String] = {
           new RuntimeException(s"Failed to parse export JSON: ${e.getMessage}")
         )
     )
-    sources = {
-      val mainScope =
-        firstExport.scopes.getOrElse("main", ExportScope(Nil, Nil))
-      mainScope.sources.map { s =>
-        s.stripPrefix(cwd.toString + "/")
-          .stripPrefix("/private" + cwd.toString + "/")
-      }
-    }
+    sources = firstExport
+      .scopes
+      .getOrElse("main", ExportScope(Nil, Nil))
+      .sources
+      .map(stripCwd(cwd))
 
     targetLocks <- targets.traverse { target =>
       val key = targetKey(target, targets)
@@ -519,7 +523,7 @@ def computeLock(inputs: List[String]): IO[String] = {
     }
 
     lockFile = LockFile(
-      version = 6,
+      version = 7,
       sources = sources,
       targets = targetLocks.toMap
     )
@@ -567,6 +571,10 @@ private def computeTargetLock(
   } yield result
 }
 
+private def stripCwd(cwd: Path)(s: String): String =
+  s.stripPrefix(cwd.toString + "/")
+    .stripPrefix("/private" + cwd.toString + "/")
+
 private def computeTargetLockContent(
     scalaCli: String,
     inputArgs: List[String],
@@ -579,6 +587,7 @@ private def computeTargetLockContent(
   val scalaVersion = export_.scalaVersion
   val scalaMajor = scalaVersion.takeWhile(_ != '.')
   val mainScope = export_.scopes.getOrElse("main", ExportScope(Nil, Nil))
+  val testScope = export_.scopes.get("test")
   val deps = mainScope.dependencies.map { d =>
     s"${d.groupId}:${d.artifactId.fullName}:${d.version}"
   }
@@ -652,6 +661,58 @@ private def computeTargetLockContent(
           )
         }
 
+        // Test scope: scala-cli's test scope includes both main and test
+        // dependencies in a single combined resolution. We capture the full
+        // transitive set as the test classpath. We also include scala-cli's
+        // own test-runner module (and on Native, scala-native's test-interface)
+        // because scala-cli adds those at test time but does not list them in
+        // `export --json`.
+        testLock <- testScope
+          .filter(s => s.sources.nonEmpty || s.dependencies != mainScope.dependencies)
+          .traverse { tScope =>
+            val testDeps = tScope.dependencies.map(d =>
+              Dependency.of(d.groupId, d.artifactId.fullName, d.version)
+            )
+            // For JVM tests, scala-cli adds an `org.virtuslab.scala-cli:test-runner_<scalaBinary>` dep
+            // at test time. It is not listed in `export --json`, so we add it explicitly.
+            // For Native tests, scala-cli pulls `org.scala-native::test-interface` transitively
+            // through the test framework (e.g. munit-native), so no extra runner dep is needed.
+            val testRunnerDep =
+              Option.when(target.platform == "jvm") {
+                val module = scalaMajor match {
+                  case "3" => "test-runner_3"
+                  case _   =>
+                    val binary = scalaVersion.split('.').take(2).mkString(".")
+                    s"test-runner_$binary"
+                }
+                // The test-runner is published per scala-cli release on Maven Central.
+                // For SNAPSHOT/NIGHTLY scala-cli builds the matching runner isn't there,
+                // so the user can override via SCALA_CLI_NIX_RUNNER_VERSION (typically
+                // the previous stable scala-cli release).
+                val runnerVersion = sys
+                  .env
+                  .getOrElse("SCALA_CLI_NIX_RUNNER_VERSION", export_.scalaCliVersion)
+                Dependency.of(
+                  "org.virtuslab.scala-cli",
+                  module,
+                  runnerVersion
+                )
+              }
+            val allTestDeps =
+              libraryArtifact +: (testRunnerDep.toList ++ testDeps)
+            for {
+              _ <- step("Fetching test dependencies...")
+              testArtifacts <- fetchArtifacts(allTestDeps*)
+              _ <- info(
+                s"Test: ${C.bold}${testArtifacts.size}${C.reset} artifacts (transitive)"
+              )
+              testEntries <- collectEntries(testArtifacts)
+            } yield TestLock(
+              sources = tScope.sources.map(stripCwd(cwd)),
+              libraryDependencies = testEntries
+            )
+          }
+
         _ <- step("Hashing artifacts...")
         compilerEntries <- collectEntries(compilerArtifacts)
         libEntries <- collectEntries(libArtifacts)
@@ -661,7 +722,8 @@ private def computeTargetLockContent(
         exportHash = exportHash,
         compiler = compilerEntries,
         libraryDependencies = libEntries,
-        native = nativeLockDeps
+        native = nativeLockDeps,
+        test = testLock
       )
 
     case _ =>
@@ -781,7 +843,24 @@ private def doInit(cwd: Path): IO[ExitCode] = {
           ) *>
           errln("") *>
           errln(
-            s"  ${C.bold}4.${C.reset} Add to your devShell (uses wrapped scala-cli with auto-locking):"
+            s"  ${C.bold}4.${C.reset} Expose tests as checks (so ${C.dim}nix flake check${C.reset} runs them):"
+          ) *>
+          errln("") *>
+          errln(
+            s"    ${C.dim}checks.$${system} = builtins.foldl' (acc: name:${C.reset}"
+          ) *>
+          errln(
+            s"    ${C.dim}  acc // builtins.mapAttrs (n: drv: { \"$${name}-$${n}\" = drv; })${C.reset}"
+          ) *>
+          errln(
+            s"    ${C.dim}    (self.packages.$${system}.$${name}.passthru.tests or {})${C.reset}"
+          ) *>
+          errln(
+            s"    ${C.dim}) {} (builtins.attrNames self.packages.$${system});${C.reset}"
+          ) *>
+          errln("") *>
+          errln(
+            s"  ${C.bold}5.${C.reset} Add to your devShell (uses wrapped scala-cli with auto-locking):"
           ) *>
           errln("") *>
           errln(s"    ${C.dim}pkgs.scala-cli${C.reset}") *>
@@ -803,7 +882,7 @@ private def doInit(cwd: Path): IO[ExitCode] = {
               |    scala-cli-nix.inputs.nixpkgs.follows = "nixpkgs";
               |  };
               |
-              |  outputs = { nixpkgs, scala-cli-nix, ... }:
+              |  outputs = { self, nixpkgs, scala-cli-nix, ... }:
               |    let
               |      forAllSystems = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" ];
               |    in {
@@ -816,6 +895,22 @@ private def doInit(cwd: Path): IO[ExitCode] = {
               |        in {
               |$packagesBody
               |          }
+              |      );
+              |
+              |      # Pull `passthru.tests` from every package into checks, so
+              |      # `nix flake check` runs the test scope of each target.
+              |      checks = forAllSystems (system:
+              |        let
+              |          packages = self.packages.$${system};
+              |          collect = pkgName: pkg:
+              |            let tests = pkg.passthru.tests or {};
+              |            in nixpkgs.lib.mapAttrs'
+              |              (testName: drv: { name = "$${pkgName}-$${testName}"; value = drv; })
+              |              tests;
+              |        in nixpkgs.lib.foldl'
+              |          (acc: pkgName: acc // collect pkgName packages.$${pkgName})
+              |          {}
+              |          (builtins.attrNames packages)
               |      );
               |
               |      devShells = forAllSystems (system:
