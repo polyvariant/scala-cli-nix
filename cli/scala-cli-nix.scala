@@ -397,6 +397,38 @@ def collectParentPoms(
   * from the Coursier cache (e.g. because Coursier didn't end up needing it
   * during lock-time resolution).
   */
+/** Collect all (g,a,v) BOM imports declared by `pomPath` and any POM in its
+  * parent chain, with property substitution at each level using that
+  * level's accumulated properties.
+  */
+private def collectBomCoordsFromChain(
+    pomPath: Path,
+    repoBase: String
+): IO[List[(String, String, String)]] = {
+  def loop(
+      current: Path,
+      acc: List[(String, String, String)]
+  ): IO[List[(String, String, String)]] =
+    for {
+      content <- readFile(current)
+      props <- collectAccumulatedProperties(current, repoBase)
+      projectVersion = parsePomVersion(content)
+      boms = parseImportedBoms(content, projectVersion, props)
+      next <- extractParent(current).flatMap {
+        case Some((g, a, v)) if repoBase.nonEmpty =>
+          val groupPath = g.replace('.', '/')
+          val parentUrl = s"$repoBase$groupPath/$a/$v/$a-$v.pom"
+          val parentPath = cachePathForUrl(parentUrl)
+          Files[IO].exists(parentPath).flatMap {
+            case true  => loop(parentPath, acc ++ boms)
+            case false => IO.pure(acc ++ boms)
+          }
+        case _ => IO.pure(acc ++ boms)
+      }
+    } yield next
+  loop(pomPath, Nil)
+}
+
 def collectImportedBoms(
     pomPath: Path,
     repoBase: String,
@@ -404,12 +436,8 @@ def collectImportedBoms(
 ): IO[List[ArtifactEntry]] =
   if (repoBase.isEmpty) IO.pure(Nil)
   else
-    for {
-      content <- readFile(pomPath)
-      props <- collectAccumulatedProperties(pomPath, repoBase)
-      projectVersion = parsePomVersion(content)
-      boms = parseImportedBoms(content, projectVersion, props)
-      result <- boms
+    collectBomCoordsFromChain(pomPath, repoBase).flatMap { boms =>
+      boms.distinct
         .foldLeftM((List.empty[ArtifactEntry], visited)) {
           case ((acc, seen), (g, a, v)) =>
             val key = s"$g:$a:$v"
@@ -436,7 +464,7 @@ def collectImportedBoms(
             }
         }
         .map(_._1)
-    } yield result
+    }
 
 /** Pure version of extractDeclaredDeps. Returns (groupId, artifactId, version)
   * tuples for each <dependency> in the POM's <dependencies> section. Excludes
