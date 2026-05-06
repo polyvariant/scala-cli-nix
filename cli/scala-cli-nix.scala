@@ -237,31 +237,139 @@ def extractParent(pomPath: Path): IO[Option[(String, String, String)]] =
     }
   }
 
-// TODO: hardcoded Maven Central URL. Should support custom repositories from
-// scala-cli `using resolvers` directives. Also affects collectDeclaredPoms below.
-def collectParentPoms(pomPath: Path): IO[List[ArtifactEntry]] = {
+/** Given a POM URL and its coordinates, derive the repository base URL by
+  * stripping the Maven layout suffix
+  * `<groupPath>/<artifact>/<version>/<artifact>-<version>.pom`. Returns `""`
+  * when the URL doesn't match (e.g. classifier'd POM, non-Maven repo layout) —
+  * treated as "skip" by downstream callers.
+  */
+def repoBaseFromCoords(
+    pomUrl: String,
+    groupId: String,
+    artifactId: String,
+    version: String
+): String = {
+  val groupPath = groupId.replace('.', '/')
+  val suffix = s"$groupPath/$artifactId/$version/$artifactId-$version.pom"
+  if (pomUrl.endsWith(suffix)) pomUrl.dropRight(suffix.length)
+  else ""
+}
+
+/** Best-effort POM coordinate extraction. Falls back to <parent>'s groupId and
+  * version when the POM itself doesn't redeclare them.
+  */
+def parsePomCoords(content: String): Option[(String, String, String)] = {
+  val parentBlock = "(?s)<parent>\\s*(.*?)</parent>".r
+    .findFirstMatchIn(content)
+    .map(_.group(1))
+  def field(name: String, in: String): Option[String] =
+    s"<$name>(.*?)</$name>".r.findFirstMatchIn(in).map(_.group(1))
+  val withoutParent =
+    "(?s)<parent>.*?</parent>".r.replaceAllIn(content, "")
+  val withoutManagement =
+    "(?s)<dependencyManagement>.*?</dependencyManagement>".r
+      .replaceAllIn(withoutParent, "")
+  val topLevel =
+    "(?s)<project[^>]*>(.*?)<dependencies>".r
+      .findFirstMatchIn(withoutManagement)
+      .map(_.group(1))
+      .orElse(
+        "(?s)<project[^>]*>(.*)".r
+          .findFirstMatchIn(withoutManagement)
+          .map(_.group(1))
+      )
+      .getOrElse("")
+  val artifactId = field("artifactId", topLevel)
+  val groupId = field("groupId", topLevel).orElse {
+    parentBlock.flatMap(field("groupId", _))
+  }
+  val version = field("version", topLevel).orElse {
+    parentBlock.flatMap(field("version", _))
+  }
+  (groupId, artifactId, version).tupled
+}
+
+/** Repo base for a POM, derived by parsing its coordinates from the POM content
+  * and matching against `pomUrl`. Returns `""` when coords can't be parsed or
+  * the URL doesn't follow Maven layout.
+  */
+def repoBaseForPom(pomPath: Path, pomUrl: String): IO[String] =
+  readFile(pomPath).map { content =>
+    parsePomCoords(content) match {
+      case Some((g, a, v)) => repoBaseFromCoords(pomUrl, g, a, v)
+      case None            => ""
+    }
+  }
+
+def collectParentPoms(
+    pomPath: Path,
+    repoBase: String
+): IO[List[ArtifactEntry]] = {
   def loop(current: Path, acc: List[ArtifactEntry]): IO[List[ArtifactEntry]] =
     extractParent(current).flatMap {
-      case Some((groupId, artifactId, version)) =>
+      case Some((groupId, artifactId, version)) if repoBase.nonEmpty =>
         val groupPath = groupId.replace('.', '/')
-        val parentPomRelative =
-          s"https/repo1.maven.org/maven2/$groupPath/$artifactId/$version/$artifactId-$version.pom"
-        val parentPomPath = cachePath / parentPomRelative
+        val url =
+          s"$repoBase$groupPath/$artifactId/$version/$artifactId-$version.pom"
+        val parentPomPath = cachePathForUrl(url)
         Files[IO].exists(parentPomPath).flatMap {
           case true =>
-            val url =
-              s"https://repo1.maven.org/maven2/$groupPath/$artifactId/$version/$artifactId-$version.pom"
             sha256Base64(parentPomPath).flatMap { hash =>
               loop(parentPomPath, ArtifactEntry(url, hash) :: acc)
             }
           case false =>
             IO.pure(acc.reverse)
         }
-      case None =>
+      case _ =>
         IO.pure(acc.reverse)
     }
   loop(pomPath, Nil)
 }
+
+/** Capture POM-only artifacts imported as BOMs in the given POM's
+  * <dependencyManagement>. Recursively follows the BOM's own parent chain and
+  * any nested BOM imports. Returns an empty list when the BOM POM is absent
+  * from the Coursier cache (e.g. because Coursier didn't end up needing it
+  * during lock-time resolution).
+  */
+def collectImportedBoms(
+    pomPath: Path,
+    repoBase: String,
+    visited: Set[String] = Set.empty
+): IO[List[ArtifactEntry]] =
+  if (repoBase.isEmpty) IO.pure(Nil)
+  else
+    readFile(pomPath).flatMap { content =>
+      val projectVersion = parsePomVersion(content)
+      val boms = parseImportedBoms(content, projectVersion)
+      boms
+        .foldLeftM((List.empty[ArtifactEntry], visited)) {
+          case ((acc, seen), (g, a, v)) =>
+            val key = s"$g:$a:$v"
+            if (seen.contains(key)) IO.pure((acc, seen))
+            else {
+              val groupPath = g.replace('.', '/')
+              val url = s"$repoBase$groupPath/$a/$v/$a-$v.pom"
+              val bomPomPath = cachePathForUrl(url)
+              Files[IO].exists(bomPomPath).flatMap {
+                case false => IO.pure((acc, seen + key))
+                case true  =>
+                  for {
+                    hash <- sha256Base64(bomPomPath)
+                    bomEntry = ArtifactEntry(url, hash)
+                    parents <- collectParentPoms(bomPomPath, repoBase)
+                    nestedSeen = seen + key
+                    nested <- collectImportedBoms(
+                      bomPomPath,
+                      repoBase,
+                      nestedSeen
+                    )
+                  } yield (acc ++ (bomEntry :: parents) ++ nested, nestedSeen)
+              }
+            }
+        }
+        .map(_._1)
+    }
 
 /** Pure version of extractDeclaredDeps. Returns (groupId, artifactId, version)
   * tuples for each <dependency> in the POM's <dependencies> section. Excludes
@@ -291,6 +399,62 @@ def parseDeclaredDeps(pomContent: String): List[(String, String, String)] = {
 
 def extractDeclaredDeps(pomPath: Path): IO[List[(String, String, String)]] =
   readFile(pomPath).map(parseDeclaredDeps)
+
+/** Top-level POM version. Falls back to the parent's <version> when missing
+  * (POM inherits the version from its parent).
+  */
+def parsePomVersion(pomContent: String): Option[String] = {
+  val withoutParent =
+    "(?s)<parent>.*?</parent>".r.replaceAllIn(pomContent, "")
+  val withoutManagement =
+    "(?s)<dependencyManagement>.*?</dependencyManagement>".r
+      .replaceAllIn(withoutParent, "")
+  "(?s)<project[^>]*>.*?<version>(.*?)</version>".r
+    .findFirstMatchIn(withoutManagement.replaceAll("(?s)<dependencies>.*", ""))
+    .map(_.group(1))
+    .orElse {
+      "(?s)<parent>.*?<version>(.*?)</version>.*?</parent>".r
+        .findFirstMatchIn(pomContent)
+        .map(_.group(1))
+    }
+}
+
+/** Returns BOM imports declared inside <dependencyManagement>: deps with
+  * <scope>import</scope> (typically also <type>pom</type>). Resolves
+  * `${project.version}` against the containing POM's version when known.
+  */
+def parseImportedBoms(
+    pomContent: String,
+    projectVersion: Option[String]
+): List[(String, String, String)] = {
+  val managementBlock =
+    "(?s)<dependencyManagement>.*?<dependencies>\\s*(.*?)</dependencies>.*?</dependencyManagement>".r
+      .findFirstMatchIn(pomContent)
+      .map(_.group(1))
+      .getOrElse("")
+  val depPattern = "(?s)<dependency>\\s*(.*?)</dependency>".r
+  depPattern.findAllMatchIn(managementBlock).toList.flatMap { m =>
+    val body = m.group(1)
+    val isImport = "<scope>\\s*import\\s*</scope>".r.findFirstIn(body).isDefined
+    if (!isImport) Nil
+    else {
+      val triple = for {
+        g <- "<groupId>(.*?)</groupId>".r.findFirstMatchIn(body).map(_.group(1))
+        a <- "<artifactId>(.*?)</artifactId>".r
+          .findFirstMatchIn(body)
+          .map(_.group(1))
+        v <- "<version>(.*?)</version>".r.findFirstMatchIn(body).map(_.group(1))
+      } yield (g, a, v)
+      triple.toList.flatMap { (g, a, v) =>
+        val resolved =
+          if (v == "${project.version}") projectVersion
+          else if (v.contains("$")) None
+          else Some(v)
+        resolved.map(rv => (g, a, rv))
+      }
+    }
+  }
+}
 
 /** Walk all resolved POMs to find declared deps and fetch their JAR + POM
   * individually. This captures evicted versions that scala-cli may try to fetch
@@ -347,9 +511,14 @@ def collectEntriesNoRecurse(
               else urlForCachePath(pomPath)
             }
             sha256Base64(pomPath).flatMap { pomHash =>
-              collectParentPoms(pomPath).map { parentEntries =>
-                jarEntry :: ArtifactEntry(pomUrl, pomHash) :: parentEntries
-              }
+              for {
+                repoBase <- repoBaseForPom(pomPath, pomUrl)
+                parentEntries <- collectParentPoms(pomPath, repoBase)
+                bomEntries <- collectImportedBoms(pomPath, repoBase)
+              } yield jarEntry :: ArtifactEntry(
+                pomUrl,
+                pomHash
+              ) :: parentEntries ++ bomEntries
             }
         }
       }
@@ -377,12 +546,16 @@ def collectEntries(
                 else urlForCachePath(pomPath)
               }
               sha256Base64(pomPath).flatMap { pomHash =>
-                collectParentPoms(pomPath).map { parentEntries =>
+                for {
+                  repoBase <- repoBaseForPom(pomPath, pomUrl)
+                  parentEntries <- collectParentPoms(pomPath, repoBase)
+                  bomEntries <- collectImportedBoms(pomPath, repoBase)
+                } yield {
                   val newEntries =
                     jarEntry :: ArtifactEntry(
                       pomUrl,
                       pomHash
-                    ) :: parentEntries ++ entries
+                    ) :: parentEntries ++ bomEntries ++ entries
                   (newEntries, pomPath :: poms)
                 }
               }

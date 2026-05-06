@@ -138,3 +138,191 @@ class ParseDeclaredDepsTests extends munit.FunSuite {
     )
   }
 }
+
+class ParseImportedBomsTests extends munit.FunSuite {
+
+  test("no <dependencyManagement>: empty") {
+    val pom = "<project><dependencies></dependencies></project>"
+    assertEquals(parseImportedBoms(pom, None), Nil)
+  }
+
+  test("import scope, type pom: returned") {
+    val pom = """<dependencyManagement>
+                |  <dependencies>
+                |    <dependency>
+                |      <groupId>g</groupId>
+                |      <artifactId>bom</artifactId>
+                |      <version>1.0</version>
+                |      <type>pom</type>
+                |      <scope>import</scope>
+                |    </dependency>
+                |  </dependencies>
+                |</dependencyManagement>""".stripMargin
+    assertEquals(parseImportedBoms(pom, None), List(("g", "bom", "1.0")))
+  }
+
+  test("non-import deps in <dependencyManagement> are excluded") {
+    val pom = """<dependencyManagement>
+                |  <dependencies>
+                |    <dependency>
+                |      <groupId>g</groupId><artifactId>x</artifactId><version>1</version>
+                |    </dependency>
+                |    <dependency>
+                |      <groupId>g</groupId><artifactId>bom</artifactId><version>2</version>
+                |      <type>pom</type><scope>import</scope>
+                |    </dependency>
+                |  </dependencies>
+                |</dependencyManagement>""".stripMargin
+    assertEquals(parseImportedBoms(pom, None), List(("g", "bom", "2")))
+  }
+
+  test("${project.version} resolved against passed projectVersion") {
+    val pom = """<dependencyManagement>
+                |  <dependencies>
+                |    <dependency>
+                |      <groupId>g</groupId>
+                |      <artifactId>bom-internal</artifactId>
+                |      <version>${project.version}</version>
+                |      <type>pom</type>
+                |      <scope>import</scope>
+                |    </dependency>
+                |  </dependencies>
+                |</dependencyManagement>""".stripMargin
+    assertEquals(
+      parseImportedBoms(pom, Some("2.29.12")),
+      List(("g", "bom-internal", "2.29.12"))
+    )
+  }
+
+  test("${project.version} dropped when no projectVersion known") {
+    val pom = """<dependencyManagement>
+                |  <dependencies>
+                |    <dependency>
+                |      <groupId>g</groupId>
+                |      <artifactId>bom-internal</artifactId>
+                |      <version>${project.version}</version>
+                |      <type>pom</type>
+                |      <scope>import</scope>
+                |    </dependency>
+                |  </dependencies>
+                |</dependencyManagement>""".stripMargin
+    assertEquals(parseImportedBoms(pom, None), Nil)
+  }
+
+  test("other property placeholders dropped") {
+    val pom = """<dependencyManagement>
+                |  <dependencies>
+                |    <dependency>
+                |      <groupId>g</groupId>
+                |      <artifactId>bom</artifactId>
+                |      <version>${other.ver}</version>
+                |      <type>pom</type>
+                |      <scope>import</scope>
+                |    </dependency>
+                |  </dependencies>
+                |</dependencyManagement>""".stripMargin
+    assertEquals(parseImportedBoms(pom, Some("1.0")), Nil)
+  }
+
+  test("does not pick up imports outside <dependencyManagement>") {
+    val pom = """<dependencies>
+                |  <dependency>
+                |    <groupId>g</groupId>
+                |    <artifactId>bom</artifactId>
+                |    <version>1</version>
+                |    <type>pom</type>
+                |    <scope>import</scope>
+                |  </dependency>
+                |</dependencies>""".stripMargin
+    assertEquals(parseImportedBoms(pom, None), Nil)
+  }
+}
+
+class ParsePomVersionTests extends munit.FunSuite {
+
+  test("top-level <version> wins") {
+    val pom = """<project>
+                |  <groupId>g</groupId>
+                |  <artifactId>a</artifactId>
+                |  <version>2.0</version>
+                |  <parent><groupId>p</groupId><artifactId>pp</artifactId><version>1.0</version></parent>
+                |</project>""".stripMargin
+    assertEquals(parsePomVersion(pom), Some("2.0"))
+  }
+
+  test("falls back to <parent>/<version> when top-level is missing") {
+    val pom = """<project>
+                |  <artifactId>a</artifactId>
+                |  <parent><groupId>p</groupId><artifactId>pp</artifactId><version>1.0</version></parent>
+                |</project>""".stripMargin
+    assertEquals(parsePomVersion(pom), Some("1.0"))
+  }
+
+  test("ignores versions inside <dependencies> / <dependencyManagement>") {
+    val pom = """<project>
+                |  <artifactId>a</artifactId>
+                |  <parent><artifactId>pp</artifactId><version>1.0</version></parent>
+                |  <dependencies>
+                |    <dependency><groupId>x</groupId><artifactId>y</artifactId><version>9.9</version></dependency>
+                |  </dependencies>
+                |</project>""".stripMargin
+    assertEquals(parsePomVersion(pom), Some("1.0"))
+  }
+}
+
+class ParsePomCoordsTests extends munit.FunSuite {
+
+  test("all coords from top-level when present") {
+    val pom = """<project>
+                |  <groupId>g</groupId>
+                |  <artifactId>a</artifactId>
+                |  <version>1.0</version>
+                |</project>""".stripMargin
+    assertEquals(parsePomCoords(pom), Some(("g", "a", "1.0")))
+  }
+
+  test("groupId + version inherited from parent") {
+    val pom = """<project>
+                |  <artifactId>a</artifactId>
+                |  <parent><groupId>p</groupId><artifactId>pp</artifactId><version>1.0</version></parent>
+                |</project>""".stripMargin
+    assertEquals(parsePomCoords(pom), Some(("p", "a", "1.0")))
+  }
+
+  test("no artifactId -> None") {
+    val pom = """<project>
+                |  <groupId>g</groupId><version>1</version>
+                |</project>""".stripMargin
+    assertEquals(parsePomCoords(pom), None)
+  }
+}
+
+class RepoBaseFromCoordsTests extends munit.FunSuite {
+
+  test("Maven Central layout: strips suffix") {
+    val url =
+      "https://repo1.maven.org/maven2/software/amazon/awssdk/core/2.29.12/core-2.29.12.pom"
+    assertEquals(
+      repoBaseFromCoords(url, "software.amazon.awssdk", "core", "2.29.12"),
+      "https://repo1.maven.org/maven2/"
+    )
+  }
+
+  test("custom repo base") {
+    val url = "https://my-repo.example.com/m2/com/foo/bar/1.0/bar-1.0.pom"
+    assertEquals(
+      repoBaseFromCoords(url, "com.foo", "bar", "1.0"),
+      "https://my-repo.example.com/m2/"
+    )
+  }
+
+  test("non-matching coords -> empty (skip)") {
+    val url = "https://repo1.maven.org/maven2/g/a/1.0/a-1.0.pom"
+    assertEquals(repoBaseFromCoords(url, "wrong", "a", "1.0"), "")
+  }
+
+  test("non-pom URL -> empty") {
+    val url = "https://repo1.maven.org/maven2/g/a/1.0/a-1.0.jar"
+    assertEquals(repoBaseFromCoords(url, "g", "a", "1.0"), "")
+  }
+}
