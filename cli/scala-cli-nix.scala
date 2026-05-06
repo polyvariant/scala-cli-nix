@@ -1142,16 +1142,7 @@ private def doInit(cwd: Path, ref: Option[String]): IO[ExitCode] = {
           ) *>
           errln("") *>
           errln(
-            s"    ${C.dim}checks.$${system} = builtins.foldl' (acc: name:${C.reset}"
-          ) *>
-          errln(
-            s"    ${C.dim}  acc // builtins.mapAttrs (n: drv: { \"$${name}-$${n}\" = drv; })${C.reset}"
-          ) *>
-          errln(
-            s"    ${C.dim}    (self.packages.$${system}.$${name}.passthru.tests or {})${C.reset}"
-          ) *>
-          errln(
-            s"    ${C.dim}) {} (builtins.attrNames self.packages.$${system});${C.reset}"
+            s"    ${C.dim}checks.$${system} = pkgs.scala-cli-nix.collectChecks self.packages.$${system};${C.reset}"
           ) *>
           errln("") *>
           errln(
@@ -1196,16 +1187,11 @@ private def doInit(cwd: Path, ref: Option[String]): IO[ExitCode] = {
               |      # `nix flake check` runs the test scope of each target.
               |      checks = forAllSystems (system:
               |        let
-              |          packages = self.packages.$${system};
-              |          collect = pkgName: pkg:
-              |            let tests = pkg.passthru.tests or {};
-              |            in nixpkgs.lib.mapAttrs'
-              |              (testName: drv: { name = "$${pkgName}-$${testName}"; value = drv; })
-              |              tests;
-              |        in nixpkgs.lib.foldl'
-              |          (acc: pkgName: acc // collect pkgName packages.$${pkgName})
-              |          {}
-              |          (builtins.attrNames packages)
+              |          pkgs = import nixpkgs {
+              |            inherit system;
+              |            overlays = [ scala-cli-nix.overlays.default ];
+              |          };
+              |        in pkgs.scala-cli-nix.collectChecks self.packages.$${system}
               |      );
               |
               |      devShells = forAllSystems (system:

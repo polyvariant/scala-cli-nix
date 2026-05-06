@@ -118,12 +118,13 @@ The lock script reconstructs URLs by stripping the cache prefix and re-adding `:
 
 ### Phase 2: Building (`lib.nix`)
 
-`lib.nix` exposes two functions:
+`lib.nix` exposes three functions:
 
 - `buildScalaCliApp { pname, version, src, lockFile, mainClass?, target? }` — builds a single target, returning one derivation. If the lockfile has multiple targets, `target` must be specified (e.g. `target = "jvm"`). If the lockfile has exactly one target, it is selected automatically.
 - `buildScalaCliApps { pname, version, src, lockFile, mainClass? }` — builds all targets, returning an attrset of derivations keyed by target name (dots normalized to underscores, e.g. `{ jvm = <drv>; native = <drv>; }`).
+- `collectChecks packages` — flattens an attrset of packages into a checks-shaped attrset by reading each package's `passthru.tests`. Each `<pkgName>` contributes one entry per test, named `<pkgName>-<testName>`. Packages without `passthru.tests` contribute nothing. Used as `checks.<system> = pkgs.scala-cli-nix.collectChecks self.packages.<system>;`.
 
-Each returned derivation carries `passthru.tests` — an attrset (currently `{ test = <drv>; }`) of test-runner derivations. The test derivation runs `scala-cli test --offline --server=false` against the project's test sources using a deps cache built from the lockfile's `test.libraryDependencies`. Tests are skipped (the attrset is empty) when the lockfile has no `test` section for that target. The `init` command's generated flake wires every package's `passthru.tests` into `checks` so `nix flake check` runs them.
+Each derivation returned by `buildScalaCliApp(s)` carries `passthru.tests` — an attrset (currently `{ test = <drv>; }`) of test-runner derivations. The test derivation runs `scala-cli test --offline --server=false` against the project's test sources using a deps cache built from the lockfile's `test.libraryDependencies`. Tests are skipped (the attrset is empty) when the lockfile has no `test` section for that target. The `init` command's generated flake wires every package's `passthru.tests` into `checks` via `collectChecks` so `nix flake check` runs them; users with an existing `flake.nix` get the same one-liner in the printed instructions.
 
 The `mainClass` parameter (JVM only) is only needed when the project has multiple main classes — otherwise it is discovered automatically at build time.
 

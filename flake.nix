@@ -83,19 +83,9 @@
             overlays = [ self.overlays.default ];
           };
           # Pull `passthru.tests` from every package in `self.packages.<system>`
-          # into checks, mirroring how `init` wires consumer flakes. Same
-          # collection pattern as a generated user flake — eats our own
-          # dogfood for the CLI's munit tests.
-          packages = self.packages.${system};
-          collectTests = pkgName: pkg:
-            let tests = pkg.passthru.tests or { };
-            in nixpkgs.lib.mapAttrs'
-              (testName: drv: { name = "${pkgName}-${testName}"; value = drv; })
-              tests;
-          packageTests = nixpkgs.lib.foldl'
-            (acc: pkgName: acc // collectTests pkgName packages.${pkgName})
-            { }
-            (builtins.attrNames packages);
+          # into checks via the library helper — same code path as a generated
+          # user flake, so the CLI's munit suite runs under `nix flake check`.
+          packageTests = pkgs.scala-cli-nix.collectChecks self.packages.${system};
           example = pkgs.callPackage ./examples/scala3/derivation.nix { };
           example-scala2 = pkgs.callPackage ./examples/scala2/derivation.nix { };
           example-scala-native = pkgs.callPackage ./examples/scala-native/derivation.nix { };

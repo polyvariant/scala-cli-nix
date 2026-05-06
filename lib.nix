@@ -238,6 +238,21 @@ let
   nixKey = key: builtins.replaceStrings [ "." ] [ "_" ] key;
 
 in {
+  # Collect `passthru.tests` from every package in `packages` into a flat
+  # checks-shaped attrset, mapping `<pkgName>-<testName>` to each test
+  # derivation. Packages without a `passthru.tests` attrset contribute
+  # nothing. Intended for use as `checks.<system> = scala-cli-nix.collectChecks
+  # self.packages.<system>;` in flakes that consume `buildScalaCliApp(s)`.
+  collectChecks = packages:
+    builtins.foldl'
+      (acc: pkgName:
+        let tests = packages.${pkgName}.passthru.tests or {};
+        in acc // lib.mapAttrs'
+          (testName: drv: { name = "${pkgName}-${testName}"; value = drv; })
+          tests)
+      {}
+      (builtins.attrNames packages);
+
   # Build all targets from a lockfile, returning an attrset keyed by target name
   # e.g. { jvm = <drv>; native = <drv>; } or { jvm-3_6_4 = <drv>; native-3_6_4 = <drv>; }
   buildScalaCliApps = { pname, version, src, lockFile, mainClass ? null, attrOverrides ? (attrs: _platform: attrs) }:
