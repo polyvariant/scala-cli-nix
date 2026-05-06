@@ -11,7 +11,7 @@ Implemented in `cli/scala-cli-nix.scala` (Scala 3). The CLI is itself built by `
 1. `scala-cli --power list-targets <inputs>` returns the build matrix as JSON — one `{platform, scalaVersion}` entry per declared target. The CLI handles `//> using platform[s]` / `//> using scala` directives, so we don't parse them ourselves.
 2. For each target in the matrix, `scala-cli export --json --platform <p> --scala-version <v> <inputs>` discovers the Scala version, source files, and direct+transitive dependencies.
 3. `coursierapi.Fetch` (from `io.get-coursier:interface`) downloads all transitive JARs for both the compiler and library dependencies. No `cs` CLI needed — resolution happens in-process.
-4. For each JAR, the adjacent POM is found in the Coursier cache. Parent POMs are discovered by walking the `<parent>` chain using regex. SHA-256 hashes are computed in-process via `java.security.MessageDigest` — no `nix hash file` needed.
+4. For each JAR, the adjacent POM is found in the Coursier cache. Parent POMs are discovered by walking the `<parent>` chain, parsed with `scala-xml`. SHA-256 hashes are computed in-process via `java.security.MessageDigest` — no `nix hash file` needed.
 5. The output is `scala.lock.json` with one section per target.
 
 #### Lockfile format (`scala.lock.json`, version 7)

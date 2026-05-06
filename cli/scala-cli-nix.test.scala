@@ -48,30 +48,30 @@ class ParseDeclaredDepsTests extends munit.FunSuite {
   }
 
   test("single dependency") {
-    val pom = """<dependencies>
+    val pom = """<project><dependencies>
                 |  <dependency>
                 |    <groupId>org.example</groupId>
                 |    <artifactId>foo</artifactId>
                 |    <version>1.2.3</version>
                 |  </dependency>
-                |</dependencies>""".stripMargin
+                |</dependencies></project>""".stripMargin
     assertEquals(parseDeclaredDeps(pom), List(("org.example", "foo", "1.2.3")))
   }
 
   test("multiple dependencies in order") {
-    val pom = """<dependencies>
+    val pom = """<project><dependencies>
                 |  <dependency>
                 |    <groupId>a</groupId><artifactId>x</artifactId><version>1</version>
                 |  </dependency>
                 |  <dependency>
                 |    <groupId>b</groupId><artifactId>y</artifactId><version>2</version>
                 |  </dependency>
-                |</dependencies>""".stripMargin
+                |</dependencies></project>""".stripMargin
     assertEquals(parseDeclaredDeps(pom), List(("a", "x", "1"), ("b", "y", "2")))
   }
 
   test("dependency with exclusions and scope") {
-    val pom = """<dependencies>
+    val pom = """<project><dependencies>
                 |  <dependency>
                 |    <groupId>org.scala-native</groupId>
                 |    <artifactId>scalalib_native0.5_2.13</artifactId>
@@ -84,7 +84,7 @@ class ParseDeclaredDepsTests extends munit.FunSuite {
                 |      </exclusion>
                 |    </exclusions>
                 |  </dependency>
-                |</dependencies>""".stripMargin
+                |</dependencies></project>""".stripMargin
     assertEquals(
       parseDeclaredDeps(pom),
       List(("org.scala-native", "scalalib_native0.5_2.13", "2.13.8+0.5.2"))
@@ -92,7 +92,8 @@ class ParseDeclaredDepsTests extends munit.FunSuite {
   }
 
   test("ignores deps in <dependencyManagement>") {
-    val pom = """<dependencyManagement>
+    val pom = """<project>
+                |<dependencyManagement>
                 |  <dependencies>
                 |    <dependency>
                 |      <groupId>managed</groupId><artifactId>m</artifactId><version>9</version>
@@ -103,7 +104,8 @@ class ParseDeclaredDepsTests extends munit.FunSuite {
                 |  <dependency>
                 |    <groupId>real</groupId><artifactId>r</artifactId><version>1</version>
                 |  </dependency>
-                |</dependencies>""".stripMargin
+                |</dependencies>
+                |</project>""".stripMargin
     val result = parseDeclaredDeps(pom)
     assert(result.contains(("real", "r", "1")), s"expected real:r:1 in $result")
     assert(
@@ -113,25 +115,25 @@ class ParseDeclaredDepsTests extends munit.FunSuite {
   }
 
   test("dep missing version is dropped") {
-    val pom = """<dependencies>
+    val pom = """<project><dependencies>
                 |  <dependency>
                 |    <groupId>a</groupId><artifactId>x</artifactId>
                 |  </dependency>
                 |  <dependency>
                 |    <groupId>b</groupId><artifactId>y</artifactId><version>2</version>
                 |  </dependency>
-                |</dependencies>""".stripMargin
+                |</dependencies></project>""".stripMargin
     assertEquals(parseDeclaredDeps(pom), List(("b", "y", "2")))
   }
 
   test("property placeholders are returned verbatim (caller filters)") {
-    val pom = """<dependencies>
+    val pom = """<project><dependencies>
                 |  <dependency>
                 |    <groupId>org.example</groupId>
                 |    <artifactId>foo</artifactId>
                 |    <version>${project.version}</version>
                 |  </dependency>
-                |</dependencies>""".stripMargin
+                |</dependencies></project>""".stripMargin
     assertEquals(
       parseDeclaredDeps(pom),
       List(("org.example", "foo", "${project.version}"))
@@ -147,7 +149,7 @@ class ParseImportedBomsTests extends munit.FunSuite {
   }
 
   test("import scope, type pom: returned") {
-    val pom = """<dependencyManagement>
+    val pom = """<project><dependencyManagement>
                 |  <dependencies>
                 |    <dependency>
                 |      <groupId>g</groupId>
@@ -157,12 +159,12 @@ class ParseImportedBomsTests extends munit.FunSuite {
                 |      <scope>import</scope>
                 |    </dependency>
                 |  </dependencies>
-                |</dependencyManagement>""".stripMargin
+                |</dependencyManagement></project>""".stripMargin
     assertEquals(parseImportedBoms(pom, None), List(("g", "bom", "1.0")))
   }
 
   test("non-import deps in <dependencyManagement> are excluded") {
-    val pom = """<dependencyManagement>
+    val pom = """<project><dependencyManagement>
                 |  <dependencies>
                 |    <dependency>
                 |      <groupId>g</groupId><artifactId>x</artifactId><version>1</version>
@@ -172,12 +174,12 @@ class ParseImportedBomsTests extends munit.FunSuite {
                 |      <type>pom</type><scope>import</scope>
                 |    </dependency>
                 |  </dependencies>
-                |</dependencyManagement>""".stripMargin
+                |</dependencyManagement></project>""".stripMargin
     assertEquals(parseImportedBoms(pom, None), List(("g", "bom", "2")))
   }
 
   test("${project.version} resolved against passed projectVersion") {
-    val pom = """<dependencyManagement>
+    val pom = """<project><dependencyManagement>
                 |  <dependencies>
                 |    <dependency>
                 |      <groupId>g</groupId>
@@ -187,7 +189,7 @@ class ParseImportedBomsTests extends munit.FunSuite {
                 |      <scope>import</scope>
                 |    </dependency>
                 |  </dependencies>
-                |</dependencyManagement>""".stripMargin
+                |</dependencyManagement></project>""".stripMargin
     assertEquals(
       parseImportedBoms(pom, Some("2.29.12")),
       List(("g", "bom-internal", "2.29.12"))
@@ -195,7 +197,7 @@ class ParseImportedBomsTests extends munit.FunSuite {
   }
 
   test("${project.version} dropped when no projectVersion known") {
-    val pom = """<dependencyManagement>
+    val pom = """<project><dependencyManagement>
                 |  <dependencies>
                 |    <dependency>
                 |      <groupId>g</groupId>
@@ -205,12 +207,12 @@ class ParseImportedBomsTests extends munit.FunSuite {
                 |      <scope>import</scope>
                 |    </dependency>
                 |  </dependencies>
-                |</dependencyManagement>""".stripMargin
+                |</dependencyManagement></project>""".stripMargin
     assertEquals(parseImportedBoms(pom, None), Nil)
   }
 
   test("other property placeholders dropped") {
-    val pom = """<dependencyManagement>
+    val pom = """<project><dependencyManagement>
                 |  <dependencies>
                 |    <dependency>
                 |      <groupId>g</groupId>
@@ -220,12 +222,12 @@ class ParseImportedBomsTests extends munit.FunSuite {
                 |      <scope>import</scope>
                 |    </dependency>
                 |  </dependencies>
-                |</dependencyManagement>""".stripMargin
+                |</dependencyManagement></project>""".stripMargin
     assertEquals(parseImportedBoms(pom, Some("1.0")), Nil)
   }
 
   test("does not pick up imports outside <dependencyManagement>") {
-    val pom = """<dependencies>
+    val pom = """<project><dependencies>
                 |  <dependency>
                 |    <groupId>g</groupId>
                 |    <artifactId>bom</artifactId>
@@ -233,12 +235,12 @@ class ParseImportedBomsTests extends munit.FunSuite {
                 |    <type>pom</type>
                 |    <scope>import</scope>
                 |  </dependency>
-                |</dependencies>""".stripMargin
+                |</dependencies></project>""".stripMargin
     assertEquals(parseImportedBoms(pom, None), Nil)
   }
 
   test("substitutes from passed property map") {
-    val pom = """<dependencyManagement>
+    val pom = """<project><dependencyManagement>
                 |  <dependencies>
                 |    <dependency>
                 |      <groupId>org.junit</groupId>
@@ -248,7 +250,7 @@ class ParseImportedBomsTests extends munit.FunSuite {
                 |      <scope>import</scope>
                 |    </dependency>
                 |  </dependencies>
-                |</dependencyManagement>""".stripMargin
+                |</dependencyManagement></project>""".stripMargin
     assertEquals(
       parseImportedBoms(pom, None, Map("junit5.version" -> "5.10.0")),
       List(("org.junit", "junit-bom", "5.10.0"))
@@ -397,6 +399,174 @@ class ParsePomCoordsTests extends munit.FunSuite {
                 |  </dependencies>
                 |</project>""".stripMargin
     assertEquals(parsePomCoords(pom), Some(("real.group", "child", "1.0")))
+  }
+}
+
+class XmlEdgeCaseTests extends munit.FunSuite {
+
+  // Realistic Maven Central POM with namespace, schemaLocation, comments,
+  // <build>, <profiles>, and a BOM import. Used to verify each parser keeps
+  // working on real-world input.
+  val realisticPom: String =
+    """<?xml version="1.0" encoding="UTF-8"?>
+      |<project xmlns="http://maven.apache.org/POM/4.0.0"
+      |         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      |         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+      |  <modelVersion>4.0.0</modelVersion>
+      |  <parent>
+      |    <groupId>com.example.parent</groupId>
+      |    <artifactId>parent-pom</artifactId>
+      |    <version>1.0.0</version>
+      |  </parent>
+      |  <groupId>com.example</groupId>
+      |  <artifactId>my-lib</artifactId>
+      |  <version>2.5.0</version>
+      |  <!-- comment with <dependency> tags inside should not confuse parsing -->
+      |  <properties>
+      |    <junit.version>5.10.0</junit.version>
+      |    <scala.version>3.6.4</scala.version>
+      |  </properties>
+      |  <dependencyManagement>
+      |    <dependencies>
+      |      <dependency>
+      |        <groupId>org.junit</groupId>
+      |        <artifactId>junit-bom</artifactId>
+      |        <version>${junit.version}</version>
+      |        <type>pom</type>
+      |        <scope>import</scope>
+      |      </dependency>
+      |    </dependencies>
+      |  </dependencyManagement>
+      |  <dependencies>
+      |    <dependency>
+      |      <groupId>org.scala-lang</groupId>
+      |      <artifactId>scala3-library_3</artifactId>
+      |      <version>${scala.version}</version>
+      |    </dependency>
+      |    <dependency>
+      |      <groupId>org.typelevel</groupId>
+      |      <artifactId>cats-core_3</artifactId>
+      |      <version>2.10.0</version>
+      |    </dependency>
+      |  </dependencies>
+      |  <build>
+      |    <plugins>
+      |      <plugin>
+      |        <groupId>org.apache.maven.plugins</groupId>
+      |        <artifactId>maven-jar-plugin</artifactId>
+      |        <version>3.3.0</version>
+      |      </plugin>
+      |    </plugins>
+      |  </build>
+      |  <profiles>
+      |    <profile>
+      |      <id>release</id>
+      |      <dependencies>
+      |        <dependency>
+      |          <groupId>profile.only</groupId>
+      |          <artifactId>x</artifactId>
+      |          <version>9.9</version>
+      |        </dependency>
+      |      </dependencies>
+      |    </profile>
+      |  </profiles>
+      |</project>""".stripMargin
+
+  test("realistic POM: parsePomCoords picks top-level coords") {
+    assertEquals(
+      parsePomCoords(realisticPom),
+      Some(("com.example", "my-lib", "2.5.0"))
+    )
+  }
+
+  test("realistic POM: parsePomVersion picks top-level version") {
+    assertEquals(parsePomVersion(realisticPom), Some("2.5.0"))
+  }
+
+  test("realistic POM: extractParent finds parent coords") {
+    val parentPattern = "(?s)<parent>\\s*(.*?)</parent>".r
+    val m = parentPattern.findFirstMatchIn(realisticPom).map(_.group(1))
+    assert(m.isDefined)
+  }
+
+  test("realistic POM: parseProperties gets both properties") {
+    val props = parseProperties(realisticPom)
+    assertEquals(props.get("junit.version"), Some("5.10.0"))
+    assertEquals(props.get("scala.version"), Some("3.6.4"))
+  }
+
+  test("realistic POM: parseDeclaredDeps returns both top-level deps") {
+    val deps = parseDeclaredDeps(realisticPom)
+    assert(
+      deps.contains(("org.typelevel", "cats-core_3", "2.10.0")),
+      deps.toString
+    )
+    assert(
+      deps.contains(("org.scala-lang", "scala3-library_3", "${scala.version}")),
+      deps.toString
+    )
+  }
+
+  test("realistic POM: parseImportedBoms with property substitution") {
+    val props = parseProperties(realisticPom)
+    assertEquals(
+      parseImportedBoms(realisticPom, parsePomVersion(realisticPom), props),
+      List(("org.junit", "junit-bom", "5.10.0"))
+    )
+  }
+
+  test("XML comments inside <dependencies> are ignored") {
+    val pom = """<project><dependencies>
+                |  <!-- <dependency><groupId>commented</groupId><artifactId>out</artifactId><version>1</version></dependency> -->
+                |  <dependency>
+                |    <groupId>real</groupId>
+                |    <artifactId>r</artifactId>
+                |    <version>1</version>
+                |  </dependency>
+                |</dependencies></project>""".stripMargin
+    val deps = parseDeclaredDeps(pom)
+    assert(deps.contains(("real", "r", "1")), deps.toString)
+    assert(!deps.exists(_._1 == "commented"), s"commented dep leaked: $deps")
+  }
+
+  test("parsePomCoords ignores <profiles> coords") {
+    val pom = """<project>
+                |  <groupId>real</groupId>
+                |  <artifactId>a</artifactId>
+                |  <version>1.0</version>
+                |  <profiles>
+                |    <profile>
+                |      <id>x</id>
+                |      <activation>
+                |        <property>
+                |          <name>foo</name>
+                |        </property>
+                |      </activation>
+                |    </profile>
+                |  </profiles>
+                |</project>""".stripMargin
+    assertEquals(parsePomCoords(pom), Some(("real", "a", "1.0")))
+  }
+
+  test("namespaced project root still parses (xmlns declared)") {
+    val pom = """<?xml version="1.0" encoding="UTF-8"?>
+                |<project xmlns="http://maven.apache.org/POM/4.0.0">
+                |  <groupId>g</groupId>
+                |  <artifactId>a</artifactId>
+                |  <version>1.0</version>
+                |</project>""".stripMargin
+    assertEquals(parsePomCoords(pom), Some(("g", "a", "1.0")))
+  }
+
+  test("whitespace inside element text is trimmed") {
+    val pom = """<project>
+                |  <groupId>
+                |    g
+                |  </groupId>
+                |  <artifactId>a</artifactId>
+                |  <version>1.0</version>
+                |</project>""".stripMargin
+    assertEquals(parsePomCoords(pom), Some(("g", "a", "1.0")))
   }
 }
 
