@@ -295,6 +295,45 @@ class ParsePomCoordsTests extends munit.FunSuite {
                 |</project>""".stripMargin
     assertEquals(parsePomCoords(pom), None)
   }
+
+  test("ignores <build>/<plugins> coords when picking top-level group") {
+    val pom = """<project>
+                |  <parent>
+                |    <groupId>real.group</groupId>
+                |    <artifactId>parent</artifactId>
+                |    <version>2.0</version>
+                |  </parent>
+                |  <artifactId>child</artifactId>
+                |  <build>
+                |    <plugins>
+                |      <plugin>
+                |        <groupId>org.apache.maven.plugins</groupId>
+                |        <artifactId>maven-jar-plugin</artifactId>
+                |      </plugin>
+                |    </plugins>
+                |  </build>
+                |</project>""".stripMargin
+    assertEquals(parsePomCoords(pom), Some(("real.group", "child", "2.0")))
+  }
+
+  test("ignores <dependencies> coords") {
+    val pom = """<project>
+                |  <parent>
+                |    <groupId>real.group</groupId>
+                |    <artifactId>p</artifactId>
+                |    <version>1.0</version>
+                |  </parent>
+                |  <artifactId>child</artifactId>
+                |  <dependencies>
+                |    <dependency>
+                |      <groupId>some.dep</groupId>
+                |      <artifactId>x</artifactId>
+                |      <version>9</version>
+                |    </dependency>
+                |  </dependencies>
+                |</project>""".stripMargin
+    assertEquals(parsePomCoords(pom), Some(("real.group", "child", "1.0")))
+  }
 }
 
 class RepoBaseFromCoordsTests extends munit.FunSuite {

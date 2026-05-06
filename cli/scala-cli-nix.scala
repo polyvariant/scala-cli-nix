@@ -255,6 +255,22 @@ def repoBaseFromCoords(
   else ""
 }
 
+/** Strip child blocks that may contain unrelated <groupId>/<artifactId>/
+  * <version> tags so the top-level scan picks up project-level coords only.
+  */
+private def stripNonTopLevelBlocks(content: String): String = {
+  val patterns = List(
+    "(?s)<parent>.*?</parent>",
+    "(?s)<dependencyManagement>.*?</dependencyManagement>",
+    "(?s)<dependencies>.*?</dependencies>",
+    "(?s)<build>.*?</build>",
+    "(?s)<profiles>.*?</profiles>",
+    "(?s)<pluginManagement>.*?</pluginManagement>",
+    "(?s)<reporting>.*?</reporting>"
+  )
+  patterns.foldLeft(content) { (acc, p) => p.r.replaceAllIn(acc, "") }
+}
+
 /** Best-effort POM coordinate extraction. Falls back to <parent>'s groupId and
   * version when the POM itself doesn't redeclare them.
   */
@@ -264,21 +280,7 @@ def parsePomCoords(content: String): Option[(String, String, String)] = {
     .map(_.group(1))
   def field(name: String, in: String): Option[String] =
     s"<$name>(.*?)</$name>".r.findFirstMatchIn(in).map(_.group(1))
-  val withoutParent =
-    "(?s)<parent>.*?</parent>".r.replaceAllIn(content, "")
-  val withoutManagement =
-    "(?s)<dependencyManagement>.*?</dependencyManagement>".r
-      .replaceAllIn(withoutParent, "")
-  val topLevel =
-    "(?s)<project[^>]*>(.*?)<dependencies>".r
-      .findFirstMatchIn(withoutManagement)
-      .map(_.group(1))
-      .orElse(
-        "(?s)<project[^>]*>(.*)".r
-          .findFirstMatchIn(withoutManagement)
-          .map(_.group(1))
-      )
-      .getOrElse("")
+  val topLevel = stripNonTopLevelBlocks(content)
   val artifactId = field("artifactId", topLevel)
   val groupId = field("groupId", topLevel).orElse {
     parentBlock.flatMap(field("groupId", _))
@@ -404,13 +406,9 @@ def extractDeclaredDeps(pomPath: Path): IO[List[(String, String, String)]] =
   * (POM inherits the version from its parent).
   */
 def parsePomVersion(pomContent: String): Option[String] = {
-  val withoutParent =
-    "(?s)<parent>.*?</parent>".r.replaceAllIn(pomContent, "")
-  val withoutManagement =
-    "(?s)<dependencyManagement>.*?</dependencyManagement>".r
-      .replaceAllIn(withoutParent, "")
-  "(?s)<project[^>]*>.*?<version>(.*?)</version>".r
-    .findFirstMatchIn(withoutManagement.replaceAll("(?s)<dependencies>.*", ""))
+  val topLevel = stripNonTopLevelBlocks(pomContent)
+  "<version>(.*?)</version>".r
+    .findFirstMatchIn(topLevel)
     .map(_.group(1))
     .orElse {
       "(?s)<parent>.*?<version>(.*?)</version>.*?</parent>".r
