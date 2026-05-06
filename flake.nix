@@ -12,16 +12,36 @@
       overlays.default = final: prev: {
         scala-cli-nix = final.callPackage self.lib { scala-cli = prev.scala-cli; };
 
-        # The real scala-cli, accessible as real-scala-cli
+        # The real scala-cli, accessible as real-scala-cli.
+        # TEMPORARY: fetched from a kubukoz/scala-cli fork release instead of nixpkgs.
+        # Revert to `prev.scala-cli` (or the `local-scala-cli` checked-in binary) once
+        # the upstream release catches up.
         real-scala-cli =
           let
-            bin = ./local-scala-cli;
+            assets = {
+              "aarch64-darwin" = {
+                asset = "scala-cli-aarch64-apple-darwin.gz";
+                sha256 = "037ns1lna1cwpz7cd0dhrf070y3m305md5p2slcdx4c5hhbnj7ik";
+              };
+              "x86_64-linux" = {
+                asset = "scala-cli-x86_64-pc-linux.gz";
+                sha256 = "15i2xafdqj5lplg9kknyjsfblxzndxvzapvjcqi867irkn0rqip8";
+              };
+            };
+            asset = assets.${final.stdenv.hostPlatform.system}
+              or (throw "scala-cli fork release has no asset for ${final.stdenv.hostPlatform.system}");
+            src = final.fetchurl {
+              url = "https://github.com/kubukoz/scala-cli/releases/download/fork-a172823/${asset.asset}";
+              inherit (asset) sha256;
+            };
+            forked = (prev.scala-cli.override { jre = prev.jdk; }).overrideAttrs (old: {
+              version = "fork-a172823";
+              inherit src;
+            });
           in final.runCommand "real-scala-cli" {} ''
             mkdir -p $out/bin
-            cp ${bin} $out/bin/real-scala-cli
-            chmod +x $out/bin/real-scala-cli
-            cp ${bin} $out/bin/scala-cli
-            chmod +x $out/bin/scala-cli
+            ln -s ${forked}/bin/scala-cli $out/bin/real-scala-cli
+            ln -s ${forked}/bin/scala-cli $out/bin/scala-cli
           '';
 
         # scala-cli-nix CLI tool (init/lock), built by its own buildScalaCliApp
