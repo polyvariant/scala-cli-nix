@@ -236,6 +236,70 @@ class ParseImportedBomsTests extends munit.FunSuite {
                 |</dependencies>""".stripMargin
     assertEquals(parseImportedBoms(pom, None), Nil)
   }
+
+  test("substitutes from passed property map") {
+    val pom = """<dependencyManagement>
+                |  <dependencies>
+                |    <dependency>
+                |      <groupId>org.junit</groupId>
+                |      <artifactId>junit-bom</artifactId>
+                |      <version>${junit5.version}</version>
+                |      <type>pom</type>
+                |      <scope>import</scope>
+                |    </dependency>
+                |  </dependencies>
+                |</dependencyManagement>""".stripMargin
+    assertEquals(
+      parseImportedBoms(pom, None, Map("junit5.version" -> "5.10.0")),
+      List(("org.junit", "junit-bom", "5.10.0"))
+    )
+  }
+}
+
+class PropertiesTests extends munit.FunSuite {
+
+  test("parseProperties: extracts <name>value</name> pairs") {
+    val pom = """<project>
+                |  <properties>
+                |    <foo.bar>1.2.3</foo.bar>
+                |    <baz>hello</baz>
+                |  </properties>
+                |</project>""".stripMargin
+    assertEquals(
+      parseProperties(pom),
+      Map("foo.bar" -> "1.2.3", "baz" -> "hello")
+    )
+  }
+
+  test("parseProperties: missing <properties> -> empty") {
+    assertEquals(parseProperties("<project></project>"), Map.empty)
+  }
+
+  test("substituteProperties: simple substitution") {
+    assertEquals(
+      substituteProperties("${foo}", Map("foo" -> "bar")),
+      "bar"
+    )
+  }
+
+  test("substituteProperties: indirect substitution resolves") {
+    val props = Map("a" -> "${b}", "b" -> "value")
+    assertEquals(substituteProperties("${a}", props), "value")
+  }
+
+  test("substituteProperties: unresolved placeholder kept verbatim") {
+    assertEquals(
+      substituteProperties("${unknown}", Map.empty),
+      "${unknown}"
+    )
+  }
+
+  test("substituteProperties: mix of resolved and literal") {
+    assertEquals(
+      substituteProperties("v=${ver}-final", Map("ver" -> "1")),
+      "v=1-final"
+    )
+  }
 }
 
 class ParsePomVersionTests extends munit.FunSuite {

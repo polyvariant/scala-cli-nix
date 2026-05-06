@@ -255,6 +255,39 @@ def repoBaseFromCoords(
   else ""
 }
 
+/** Parse the POM's <properties> block (top-level only) into a name->value
+  * map. Values may themselves contain placeholders (`${name}`) that
+  * resolve against properties higher in the parent chain — caller is
+  * responsible for combining maps and resolving recursively if needed.
+  */
+def parseProperties(content: String): Map[String, String] = {
+  val block = "(?s)<properties>\\s*(.*?)</properties>".r
+    .findFirstMatchIn(content)
+    .map(_.group(1))
+    .getOrElse("")
+  // Match any tag like `<name>value</name>` whose name doesn't contain
+  // whitespace, '<' or '/'. Property names commonly contain dots, so don't
+  // restrict to identifier chars.
+  val entryPattern = "(?s)<([^\\s<>/]+)>(.*?)</\\1>".r
+  entryPattern.findAllMatchIn(block).map { m =>
+    m.group(1) -> m.group(2).trim
+  }.toMap
+}
+
+/** Substitute `${name}` placeholders in `value` using `props`. Resolves
+  * indirections by re-substituting until stable or until a fixed iteration
+  * cap is hit. Unresolved placeholders are left intact.
+  */
+def substituteProperties(value: String, props: Map[String, String]): String = {
+  val placeholder = "\\$\\{([^}]+)\\}".r
+  def step(s: String): String =
+    placeholder.replaceAllIn(
+      s,
+      m => java.util.regex.Matcher.quoteReplacement(props.getOrElse(m.group(1), m.matched))
+    )
+  Iterator.iterate(value)(step).sliding(2).find(p => p.head == p.last).map(_.head).getOrElse(value)
+}
+
 /** Strip child blocks that may contain unrelated <groupId>/<artifactId>/
   * <version> tags so the top-level scan picks up project-level coords only.
   */
@@ -303,6 +336,36 @@ def repoBaseForPom(pomPath: Path, pomUrl: String): IO[String] =
     }
   }
 
+/** Walk a POM's parent chain and merge their <properties> blocks, with
+  * descendants overriding ancestors (Maven inheritance semantics). The POM
+  * at `pomPath` is included.
+  */
+def collectAccumulatedProperties(
+    pomPath: Path,
+    repoBase: String
+): IO[Map[String, String]] = {
+  def loop(
+      current: Path,
+      acc: Map[String, String]
+  ): IO[Map[String, String]] =
+    readFile(current).flatMap { content =>
+      // Parent's properties go in first so child's override on conflict.
+      val ownProps = parseProperties(content)
+      extractParent(current).flatMap {
+        case Some((g, a, v)) if repoBase.nonEmpty =>
+          val groupPath = g.replace('.', '/')
+          val parentUrl = s"$repoBase$groupPath/$a/$v/$a-$v.pom"
+          val parentPath = cachePathForUrl(parentUrl)
+          Files[IO].exists(parentPath).flatMap {
+            case true  => loop(parentPath, acc).map(parentAcc => parentAcc ++ ownProps)
+            case false => IO.pure(acc ++ ownProps)
+          }
+        case _ => IO.pure(acc ++ ownProps)
+      }
+    }
+  loop(pomPath, Map.empty)
+}
+
 def collectParentPoms(
     pomPath: Path,
     repoBase: String
@@ -341,10 +404,12 @@ def collectImportedBoms(
 ): IO[List[ArtifactEntry]] =
   if (repoBase.isEmpty) IO.pure(Nil)
   else
-    readFile(pomPath).flatMap { content =>
-      val projectVersion = parsePomVersion(content)
-      val boms = parseImportedBoms(content, projectVersion)
-      boms
+    for {
+      content <- readFile(pomPath)
+      props <- collectAccumulatedProperties(pomPath, repoBase)
+      projectVersion = parsePomVersion(content)
+      boms = parseImportedBoms(content, projectVersion, props)
+      result <- boms
         .foldLeftM((List.empty[ArtifactEntry], visited)) {
           case ((acc, seen), (g, a, v)) =>
             val key = s"$g:$a:$v"
@@ -371,7 +436,7 @@ def collectImportedBoms(
             }
         }
         .map(_._1)
-    }
+    } yield result
 
 /** Pure version of extractDeclaredDeps. Returns (groupId, artifactId, version)
   * tuples for each <dependency> in the POM's <dependencies> section. Excludes
@@ -423,13 +488,16 @@ def parsePomVersion(pomContent: String): Option[String] = {
   */
 def parseImportedBoms(
     pomContent: String,
-    projectVersion: Option[String]
+    projectVersion: Option[String],
+    properties: Map[String, String] = Map.empty
 ): List[(String, String, String)] = {
   val managementBlock =
     "(?s)<dependencyManagement>.*?<dependencies>\\s*(.*?)</dependencies>.*?</dependencyManagement>".r
       .findFirstMatchIn(pomContent)
       .map(_.group(1))
       .getOrElse("")
+  val effectiveProps =
+    properties ++ projectVersion.map("project.version" -> _).toMap
   val depPattern = "(?s)<dependency>\\s*(.*?)</dependency>".r
   depPattern.findAllMatchIn(managementBlock).toList.flatMap { m =>
     val body = m.group(1)
@@ -444,11 +512,8 @@ def parseImportedBoms(
         v <- "<version>(.*?)</version>".r.findFirstMatchIn(body).map(_.group(1))
       } yield (g, a, v)
       triple.toList.flatMap { (g, a, v) =>
-        val resolved =
-          if (v == "${project.version}") projectVersion
-          else if (v.contains("$")) None
-          else Some(v)
-        resolved.map(rv => (g, a, rv))
+        val resolved = substituteProperties(v, effectiveProps)
+        Option.when(!resolved.contains("$"))((g, a, resolved))
       }
     }
   }
