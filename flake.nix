@@ -28,21 +28,21 @@
               assets = {
                 "aarch64-darwin" = {
                   asset = "scala-cli-aarch64-apple-darwin.gz";
-                  sha256 = "00xz1vpkvw13zbrf6d777c4569wpd2mgb1ss8yi8zwr2qjcyq1r7";
+                  sha256 = "1h2ghqp0jan7hxzqfnfyyvhyn9dpyjfak1cd73sm1k2qbhvcm1pg";
                 };
                 "x86_64-linux" = {
                   asset = "scala-cli-x86_64-pc-linux.gz";
-                  sha256 = "1v6gjshr9iqlbjkdh8b7jaz3z47cj69n6phk5zn9lijz4b00bdcx";
+                  sha256 = "03788lp7mycvm1p6ji7000vywhaw2f97xg8mxypj10gwy0n9hc8b";
                 };
               };
               asset = assets.${final.stdenv.hostPlatform.system}
                 or (throw "scala-cli fork release has no asset for ${final.stdenv.hostPlatform.system}");
               src = final.fetchurl {
-                url = "https://github.com/kubukoz/scala-cli/releases/download/fork-424bd79/${asset.asset}";
+                url = "https://github.com/kubukoz/scala-cli/releases/download/fork-c043db1/${asset.asset}";
                 inherit (asset) sha256;
               };
             in (prev.scala-cli.override { jre = prev.jdk; }).overrideAttrs (old: {
-              version = "fork-424bd79";
+              version = "fork-c043db1";
               inherit src;
             });
         in final.symlinkJoin {

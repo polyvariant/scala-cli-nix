@@ -93,7 +93,6 @@ case class NativeOptionsExport(
 
 case class ExportInfo(
     scalaVersion: String,
-    scalaCliVersion: String,
     platform: Option[String],
     nativeOptions: Option[NativeOptionsExport],
     scopes: Map[String, ExportScope]
@@ -700,14 +699,6 @@ val hashPrinter: Printer = Printer.noSpaces.copy(sortKeys = true)
 val lockfilePrinter: Printer =
   Printer.spaces2.copy(sortKeys = true, colonLeft = "", dropNullValues = true)
 
-/** Last published `org.virtuslab.scala-cli:test-runner_<binary>` per Scala
-  * binary, used to cap the default runner version when scala-cli stopped
-  * publishing for a binary. Keys are the suffix used in the artifact id.
-  */
-val lastPublishedRunner: Map[String, String] = Map(
-  "2.12" -> "1.9.1"
-)
-
 /** Compute lockfile content without writing it. Always recomputes from scratch.
   */
 def computeLock(inputs: List[String]): IO[String] = {
@@ -892,10 +883,10 @@ private def computeTargetLockContent(
 
         // Test scope: scala-cli's test scope includes both main and test
         // dependencies in a single combined resolution. We capture the full
-        // transitive set as the test classpath. We also include scala-cli's
-        // own test-runner module (and on Native, scala-native's test-interface)
-        // because scala-cli adds those at test time but does not list them in
-        // `export --json`.
+        // transitive set as the test classpath. The JVM test-runner is part of
+        // the test scope's `dependencies` (scala-cli's `export --json` injects
+        // it for the Test scope on JVM). For Native, `test-interface` is pulled
+        // in transitively by the test framework (e.g. munit-native).
         testLock <- testScope
           .filter(s =>
             s.sources.nonEmpty || s.dependencies != mainScope.dependencies
@@ -904,34 +895,7 @@ private def computeTargetLockContent(
             val testDeps = tScope.dependencies.map(d =>
               Dependency.of(d.groupId, d.artifactId.fullName, d.version)
             )
-            // For JVM tests, scala-cli adds an `org.virtuslab.scala-cli:test-runner_<scalaBinary>` dep
-            // at test time. It is not listed in `export --json`, so we add it explicitly.
-            // For Native tests, scala-cli pulls `org.scala-native::test-interface` transitively
-            // through the test framework (e.g. munit-native), so no extra runner dep is needed.
-            val testRunnerDep =
-              Option.when(target.platform == "jvm") {
-                val binary =
-                  if (scalaMajor == "3") "3"
-                  else scalaVersion.split('.').take(2).mkString(".")
-                val module = s"test-runner_$binary"
-                // The test-runner is published per scala-cli release on Maven Central.
-                // For SNAPSHOT/NIGHTLY scala-cli builds the matching runner isn't there,
-                // so the user can override via SCALA_CLI_NIX_RUNNER_VERSION (typically
-                // the previous stable scala-cli release). For dropped Scala binaries
-                // (currently 2.12, last published 1.9.1) we cap the default so we don't
-                // ask Maven for a non-existent artifact.
-                val cappedDefault = lastPublishedRunner
-                  .getOrElse(binary, export_.scalaCliVersion)
-                val runnerVersion = sys.env
-                  .getOrElse("SCALA_CLI_NIX_RUNNER_VERSION", cappedDefault)
-                Dependency.of(
-                  "org.virtuslab.scala-cli",
-                  module,
-                  runnerVersion
-                )
-              }
-            val allTestDeps =
-              libraryArtifact +: (testRunnerDep.toList ++ testDeps)
+            val allTestDeps = libraryArtifact +: testDeps
             for {
               _ <- step("Fetching test dependencies...")
               testArtifacts <- fetchArtifacts(allTestDeps*)

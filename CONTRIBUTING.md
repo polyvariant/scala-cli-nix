@@ -75,7 +75,7 @@ The lockfile uses a multi-target format. Each target (a platform/Scala version c
   }
 }
 ```
-`test.libraryDependencies` is the full transitive resolution of main+test deps as a single Coursier resolution (matching scala-cli's own `Scope.Test` resolution model). For JVM tests we additionally pin scala-cli's `org.virtuslab.scala-cli:test-runner_<scalaBinary>` because scala-cli adds it at test time but does not list it in `export --json`. The runner version comes from the export's `scalaCliVersion`; users on a SNAPSHOT/NIGHTLY scala-cli can pin a stable runner via `SCALA_CLI_NIX_RUNNER_VERSION`. For Native tests, `test-interface` is pulled in transitively by the test framework (e.g. munit-native), so no explicit runner dep is added.
+`test.libraryDependencies` is the full transitive resolution of main+test deps as a single Coursier resolution (matching scala-cli's own `Scope.Test` resolution model). For JVM tests, the `org.virtuslab.scala-cli:test-runner_<scalaBinary>` module appears directly in the test scope's `dependencies` returned by `scala-cli export --json` — the fork's `ScopedBuildInfo.forScope` injects it for the Test scope on JVM, with legacy version fallbacks for older Scala/Java already applied upstream. For Native tests, `test-interface` is pulled in transitively by the test framework (e.g. munit-native), so no explicit runner dep is added.
 
 ##### Target key naming
 
