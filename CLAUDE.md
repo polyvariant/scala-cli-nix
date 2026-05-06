@@ -7,9 +7,8 @@ scala-cli-nix: Nix packaging for scala-cli applications with per-artifact FOD gr
 ## Key rules
 
 - If you're EVER about to `rm -rf` anything, STOP processing immediately - just tell me what you intended to do and stop doing any work. This also applies to writing such commands into files.
-- Read `CONTRIBUTING.md` for architecture details before making changes. **Keep it up to date** when you change how the lock format, build process, overlay structure, or wrapper logic works.
-- The overlay must pass `scala-cli = prev.scala-cli` to `lib.nix` — using `final.scala-cli` would pass the auto-locking wrapper, which breaks inside the Nix sandbox.
-- Shell scripts are checked by shellcheck via `writeShellApplication`. Don't declare unused variables, and use bash parameter expansion instead of sed.
+- Read `CONTRIBUTING.md` for architecture details before making changes. **Keep it up to date** when you change how the lock format, build process, or overlay structure works.
+- The CLI shells out to a `scala-cli` binary at lock time. It reads the path from `SCALA_CLI_NIX_SCALA_CLI` (set by the Nix wrapper to a kubukoz/scala-cli fork release) and falls back to `scala-cli` on PATH otherwise. The fork is internal: never on the user's PATH, never used inside the Nix sandbox.
 - `--library` (not `--standalone`) is intentional for JVM builds — it produces a tiny JAR with only user code. Dependencies stay as individual Nix store paths on the classpath.
 - Both JARs and POMs must be in the lockfile. POMs are needed for offline Coursier resolution but filtered out of the runtime classpath.
 - Lockfile version is 6. It uses a multi-target `targets` map (even for single-target projects). `lib.nix` exposes both `buildScalaCliApp` (single derivation) and `buildScalaCliApps` (attrset of derivations for cross projects).

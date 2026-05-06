@@ -27,25 +27,16 @@ nix build
 
 ## Development workflow
 
-The generated flake includes a devShell with a wrapped `scala-cli` that **automatically regenerates the lockfile** when sources, Scala version, or dependencies change:
+The generated flake includes a devShell with `scala-cli` and the `scala-cli-nix` CLI on PATH. The CLI is also exposed as the shorter alias `scn`:
 
 ```bash
 nix develop
-scala-cli run .   # lockfile is checked/regenerated before every run
+scala-cli run .   # iterate on your code
+scn lock          # regenerate scala.lock.json after changing deps / sources
+nix build         # rebuild the Nix derivation
 ```
 
-The wrapper detects staleness by comparing the current `scala-cli export --json` output against `scala.lock.json` — if anything differs, it runs `scala-cli-nix lock` before forwarding to the real scala-cli.
-
-## Updating dependencies manually
-
-After changing `//> using dep` directives in your `.scala` files, you can also regenerate the lockfile explicitly:
-
-```bash
-# From the devShell (nix develop), or directly:
-nix run github:scala-nix/scala-cli-nix -- lock
-```
-
-Then rebuild with `nix build`.
+After changing `//> using dep` directives, the Scala version, or adding/removing source files, run `scn lock` (or equivalently `scala-cli-nix lock`, or `nix run github:scala-nix/scala-cli-nix -- lock`) to refresh the lockfile.
 
 ## Cross-compilation
 

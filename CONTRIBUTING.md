@@ -6,7 +6,7 @@ scala-cli-nix has two phases: **lock** (runs outside Nix, has network) and **bui
 
 ### Phase 1: Locking (`scala-cli-nix lock`)
 
-Implemented in `cli/scala-cli-nix.scala` (Scala 3). The CLI is itself built by `buildScalaCliApp` (self-hosting). At runtime, only `real-scala-cli` needs to be on PATH.
+Implemented in `cli/scala-cli-nix.scala` (Scala 3). The CLI is itself built by `buildScalaCliApp` (self-hosting). At runtime, the CLI needs a `scala-cli` binary to shell out to: it reads the absolute path from `SCALA_CLI_NIX_SCALA_CLI` if set, otherwise falls back to whatever `scala-cli` is on PATH. The Nix-built `scala-cli-nix-cli` derivation sets that env var to a bundled fork release (see "Overlay" below).
 
 1. `scala-cli --power list-targets <inputs>` returns the build matrix as JSON — one `{platform, scalaVersion}` entry per declared target. The CLI handles `//> using platform[s]` / `//> using scala` directives, so we don't parse them ourselves.
 2. For each target in the matrix, `scala-cli export --json --platform <p> --scala-version <v> <inputs>` discovers the Scala version, source files, and direct+transitive dependencies.
@@ -166,24 +166,16 @@ The classpath filters out POM files (`builtins.match ".*\\.jar"`) since only JAR
 
 ### Overlay (`flake.nix`)
 
-The overlay provides four packages:
+The overlay provides two packages:
 
 | Package | Description |
 |---|---|
 | `scala-cli-nix` | The build library (`buildScalaCliApp` and `buildScalaCliApps`) |
-| `real-scala-cli` | Thin wrapper around the upstream `scala-cli`, used to avoid recursion |
-| `scala-cli-nix-cli` | The `scala-cli-nix` CLI (init/lock commands), built by `buildScalaCliApp` itself (self-hosting) |
-| `scala-cli` | Wrapped scala-cli that auto-locks before forwarding |
+| `scala-cli-nix-cli` | The CLI (init/lock commands), built by `buildScalaCliApp` itself (self-hosting); exposes both `scala-cli-nix` and the shorter `scn` alias |
 
-**Critical**: When calling `lib.nix` from the overlay, `scala-cli` must be passed as `prev.scala-cli` (the unwrapped upstream version). Otherwise the build would use the auto-locking wrapper, which tries to run `scala-cli export` inside the sandbox (no network) and fails.
+`pkgs.scala-cli` itself is **not** overridden — users get whatever upstream nixpkgs ships. Likewise, the sandboxed Nix build (`lib.nix`) uses `prev.scala-cli`.
 
-The `scala-cli-nix-cli` package is wrapped with `makeWrapper` to put `real-scala-cli` on PATH at runtime (needed for `export --json`).
-
-### Auto-locking wrapper (`scala-cli-wrapper.sh`)
-
-The wrapped `scala-cli` intercepts every call and runs `scala-cli-nix lock` before forwarding to the real scala-cli. The lock command handles the staleness check internally — if the lockfile is up to date, it exits quickly with a message.
-
-The wrapper strips the scala-cli subcommand (e.g. `run`, `test`) from the arguments before passing them to `lock`, then forwards the original arguments to `real-scala-cli`.
+The CLI does need a specific scala-cli build at lock time (the `kubukoz/scala-cli` fork has fixes the lock workflow depends on), so `scala-cli-nix-cli` is wrapped with `makeWrapper` to set `SCALA_CLI_NIX_SCALA_CLI` to the bundled fork binary's absolute path. This is internal — the fork is never on the user's PATH and never used inside the sandbox.
 
 ### `scala-cli-nix init`
 
@@ -201,7 +193,6 @@ The generated flake uses the overlay pattern so consumers just do `pkgs.callPack
 ```
 flake.nix              # Flake: overlay, packages, checks
 lib.nix                # buildScalaCliApp / buildScalaCliApps Nix functions
-scala-cli-wrapper.sh   # Auto-locking wrapper, used via writeShellApplication
 cli/
   scala-cli-nix.scala  # CLI tool (init/lock), built by buildScalaCliApp
   derivation.nix       # Self-hosting derivation
@@ -222,26 +213,13 @@ nix flake check --print-build-logs
 
 This builds all example apps (Scala 2, Scala 3, Scala Native, Native+CE, and the cross JVM/Native example) and verifies their output.
 
-### Shell scripts and shellcheck
+### CLI tool
 
-The wrapper (`scala-cli-wrapper.sh`) is packaged with `writeShellApplication`, which automatically runs shellcheck.
-
-The CLI tool itself (`cli/scala-cli-nix.scala`) is written in Scala 3 and built by `buildScalaCliApp`. It uses `coursierapi` for dependency resolution, `fs2` for process execution and file I/O, and `circe` for JSON. To update the CLI's own lockfile after changing its dependencies, run:
+The CLI tool (`cli/scala-cli-nix.scala`) is written in Scala 3 and built by `buildScalaCliApp`. It uses `coursierapi` for dependency resolution, `fs2` for process execution and file I/O, and `circe` for JSON. To update the CLI's own lockfile after changing its dependencies, run:
 
 ```bash
 cd cli
 nix run ..# -- lock .
-```
-
-### Testing the wrapper locally
-
-```bash
-# Enter devShell with wrapped scala-cli
-nix develop
-
-# In a project with .scala files:
-scala-cli run .
-# The wrapper will auto-generate scala.lock.json if missing/stale
 ```
 
 ### Regenerating an example lockfile
@@ -250,5 +228,5 @@ scala-cli run .
 cd examples/scala3
 nix run ../..# -- lock
 # or, from devShell:
-scala-cli-nix lock
+scn lock
 ```

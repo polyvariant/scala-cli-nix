@@ -399,11 +399,12 @@ def collectEntries(
 
 // --- scala-cli helpers ---
 
+// When launched via the Nix-wrapped `scala-cli-nix`, the wrapper sets
+// SCALA_CLI_NIX_SCALA_CLI to an absolute path of the bundled scala-cli build.
+// Outside that wrapper (e.g. running the CLI directly during development),
+// fall back to whatever `scala-cli` is on PATH.
 val resolveScalaCli: IO[String] =
-  execCode("which", "real-scala-cli").map {
-    case 0 => "real-scala-cli"
-    case _ => "scala-cli"
-  }
+  IO(sys.env.getOrElse("SCALA_CLI_NIX_SCALA_CLI", "scala-cli"))
 
 // --- Target discovery ---
 
@@ -511,8 +512,7 @@ def computeLock(inputs: List[String]): IO[String] = {
           new RuntimeException(s"Failed to parse export JSON: ${e.getMessage}")
         )
     )
-    sources = firstExport
-      .scopes
+    sources = firstExport.scopes
       .getOrElse("main", ExportScope(Nil, Nil))
       .sources
       .map(stripCwd(cwd))
@@ -668,7 +668,9 @@ private def computeTargetLockContent(
         // because scala-cli adds those at test time but does not list them in
         // `export --json`.
         testLock <- testScope
-          .filter(s => s.sources.nonEmpty || s.dependencies != mainScope.dependencies)
+          .filter(s =>
+            s.sources.nonEmpty || s.dependencies != mainScope.dependencies
+          )
           .traverse { tScope =>
             val testDeps = tScope.dependencies.map(d =>
               Dependency.of(d.groupId, d.artifactId.fullName, d.version)
@@ -689,9 +691,11 @@ private def computeTargetLockContent(
                 // For SNAPSHOT/NIGHTLY scala-cli builds the matching runner isn't there,
                 // so the user can override via SCALA_CLI_NIX_RUNNER_VERSION (typically
                 // the previous stable scala-cli release).
-                val runnerVersion = sys
-                  .env
-                  .getOrElse("SCALA_CLI_NIX_RUNNER_VERSION", export_.scalaCliVersion)
+                val runnerVersion = sys.env
+                  .getOrElse(
+                    "SCALA_CLI_NIX_RUNNER_VERSION",
+                    export_.scalaCliVersion
+                  )
                 Dependency.of(
                   "org.virtuslab.scala-cli",
                   module,
@@ -860,7 +864,7 @@ private def doInit(cwd: Path): IO[ExitCode] = {
           ) *>
           errln("") *>
           errln(
-            s"  ${C.bold}5.${C.reset} Add to your devShell (uses wrapped scala-cli with auto-locking):"
+            s"  ${C.bold}5.${C.reset} Add to your devShell (provides ${C.dim}scala-cli-nix${C.reset} and the ${C.dim}scn${C.reset} alias):"
           ) *>
           errln("") *>
           errln(s"    ${C.dim}pkgs.scala-cli${C.reset}") *>
