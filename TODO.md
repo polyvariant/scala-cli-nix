@@ -5,6 +5,6 @@
 - [x] If there's already a lockfile, `init` should automatically switch to call `lock` instead. Inform the user.
 - [x] Move to case-app for command-line parsing (check how /Users/kubukoz/projects/movie-rewrite/migration.scala does it), use Cats Effect for IO and avoid vars/mutability
 - [x] Running init/lock should generate a flake input for this repo matching the ref it was actually created by, e.g. if I run it locally it should refer to a local flake. Find out if this is even possible. (Implemented as `init --pin-self`: pins to `?rev=<self.sourceInfo.rev>` baked in by the wrapper. Full URL autodetection isn't possible — `nix run` execs into the binary, leaving no flake-ref handle in the env or process tree.)
-- [ ] Add zsh completions like in ~/dev/sde-scala
+- [x] Add zsh completions like in ~/dev/sde-scala (case-app `complete`/`completions` runtime commands; static `_scala-cli-nix` shipped under `share/zsh/site-functions/` covering both `scala-cli-nix` and `scn`)
 - [ ] Can we name the output binary according to the main class rather than the project?
 - [x] Figure out a way to have multiple lockfiles for crosscompilation

@@ -9,12 +9,12 @@
 
 import cats.effect.ExitCode
 import cats.effect.IO
-import cats.effect.IOApp
+import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import caseapp.*
 import caseapp.core.RemainingArgs
-import caseapp.core.app.CaseApp
-import caseapp.core.commandparser.RuntimeCommandParser
+import caseapp.core.app.Command
+import caseapp.core.app.CommandsEntryPoint
 import coursierapi.*
 import fs2.Stream
 import fs2.io.file.{Files, Path}
@@ -1001,50 +1001,32 @@ private def doInit(cwd: Path, pinSelf: Boolean): IO[ExitCode] = {
 
 // --- Main ---
 
-private def parseOpts[T: Parser: Help](
-    args: List[String]
-): IO[Option[(T, RemainingArgs)]] =
-  CaseApp.detailedParseWithHelp[T](args) match {
-    case Left(err)              => IO.consoleForIO.errorln(err.message).as(None)
-    case Right((_, true, _, _)) => IO.println(CaseApp.helpMessage[T]).as(None)
-    case Right((Left(err), _, _, _)) =>
-      IO.consoleForIO.errorln(err.message).as(None)
-    case Right((Right(opts), false, _, rest)) => IO.pure(Some((opts, rest)))
+/** Run an `IO[ExitCode]` and exit the JVM with the resulting code. We bridge
+  * here because case-app's `Command.run` is sync and `Unit`-returning, while
+  * our commands are written as `IO`. Any uncaught error short-circuits to a
+  * non-zero exit.
+  */
+private def runIO(program: IO[ExitCode]): Unit = {
+  val code = program.unsafeRunSync()
+  if (code != ExitCode.Success) sys.exit(code.code)
+}
+
+object ScalaCliNix extends CommandsEntryPoint {
+  override def progName: String = "scala-cli-nix"
+  override def description: String = "Nix packaging for scala-cli apps"
+  override def commands: Seq[Command[?]] = Seq(InitCommand, LockCommand)
+  override def enableCompleteCommand: Boolean = true
+  override def enableCompletionsCommand: Boolean = true
+
+  private object InitCommand extends Command[InitOptions] {
+    override def name: String = "init"
+    override def run(options: InitOptions, args: RemainingArgs): Unit =
+      runIO(init(args.remaining.toList, options.pinSelf))
   }
 
-object ScalaCliNix extends IOApp {
-
-  private val subcommandMap: Map[List[String], List[String] => IO[ExitCode]] =
-    Map(
-      List("init") -> { args =>
-        parseOpts[InitOptions](args).flatMap {
-          case None               => IO.pure(ExitCode.Success)
-          case Some((opts, rest)) =>
-            init(rest.remaining.toList, opts.pinSelf)
-        }
-      },
-      List("lock") -> { args =>
-        parseOpts[LockOptions](args).flatMap {
-          case None            => IO.pure(ExitCode.Success)
-          case Some((_, rest)) => lock(rest.remaining.toList)
-        }
-      }
-    )
-
-  override def run(args: List[String]): IO[ExitCode] =
-    RuntimeCommandParser.parse(subcommandMap, args) match {
-      case None =>
-        errln(
-          s"${C.bold}scala-cli-nix${C.reset} — Nix packaging for scala-cli apps"
-        ) *>
-          errln("") *>
-          errln(
-            s"  ${C.bold}init${C.reset}    Scaffold flake.nix, derivation.nix, and generate lockfile"
-          ) *>
-          errln(
-            s"  ${C.bold}lock${C.reset}    Regenerate the lockfile from scala-cli sources in ."
-          ) *>
-          IO.pure(ExitCode.Error)
-      case Some((_, handler, rest)) => handler(rest)
-    }
+  private object LockCommand extends Command[LockOptions] {
+    override def name: String = "lock"
+    override def run(options: LockOptions, args: RemainingArgs): Unit =
+      runIO(lock(args.remaining.toList))
+  }
 }

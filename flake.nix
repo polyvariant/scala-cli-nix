@@ -55,6 +55,10 @@
               --set-default SCALA_CLI_NIX_SCALA_CLI ${forkScalaCli}/bin/scala-cli \
               --set-default SCALA_CLI_NIX_SELF_REV ${selfRev}
             ln -s scala-cli-nix $out/bin/scn
+
+            # zsh completion: nixpkgs auto-loads files under share/zsh/site-functions
+            # via the standard fpath. Covers both scala-cli-nix and the scn alias.
+            install -Dm644 ${./cli/_scala-cli-nix} $out/share/zsh/site-functions/_scala-cli-nix
           '';
         };
       };

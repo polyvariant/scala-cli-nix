@@ -177,6 +177,12 @@ The overlay provides two packages:
 
 The CLI does need a specific scala-cli build at lock time (the `kubukoz/scala-cli` fork has fixes the lock workflow depends on), so `scala-cli-nix-cli` is wrapped with `makeWrapper` to set `SCALA_CLI_NIX_SCALA_CLI` to the bundled fork binary's absolute path. This is internal — the fork is never on the user's PATH and never used inside the sandbox.
 
+#### Shell completions
+
+The CLI uses case-app's `CommandsEntryPoint` with `enableCompleteCommand` and `enableCompletionsCommand`, which provides `scala-cli-nix complete <shell> ...` (used by the completion script) and `scala-cli-nix completions install/uninstall` (interactive setup writing to user rc files).
+
+For Nix-installed users the interactive flow isn't needed: `cli/_scala-cli-nix` is a static zsh completion script (`#compdef scala-cli-nix scn`) that the overlay installs to `$out/share/zsh/site-functions/`. nixpkgs adds that path to `fpath` automatically, so completions work out of the box for both `scala-cli-nix` and the `scn` alias.
+
 ### `scala-cli-nix init`
 
 Scaffolds a new project:

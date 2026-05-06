@@ -1,0 +1,12 @@
+#compdef scala-cli-nix scn
+
+# zsh completion for scala-cli-nix and its `scn` alias. Delegates to case-app's
+# runtime `complete zsh-v1` command. The `#compdef` line registers this for both
+# names; the first element of `$words` is whichever the user actually invoked,
+# but case-app ignores it, so either alias works.
+
+function _scala-cli-nix {
+  eval "$(scala-cli-nix complete zsh-v1 "$CURRENT" "${words[@]}" 2> /dev/null)"
+}
+
+_scala-cli-nix "$@"
