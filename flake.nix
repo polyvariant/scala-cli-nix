@@ -122,6 +122,7 @@
               exit 1
             fi
           '';
+          example-scala-native-test = example-scala-native.passthru.tests.test;
           example-scala-native-ce = pkgs.runCommand "check-example-scala-native-ce" { } ''
             output=$(${example-scala-native-ce}/bin/example-scala-native-ce)
             if [ "$output" = "hello from scala native with cats-effect!" ]; then
