@@ -472,7 +472,7 @@ def targetKey(target: Target, allTargets: List[Target]): String = {
 
 case class LockOptions()
 case class InitOptions(
-    @Name("pin-self") pinSelf: Boolean = false
+    ref: Option[String] = None
 )
 
 // --- Lock command ---
@@ -763,22 +763,22 @@ def lock(inputs: List[String]): IO[ExitCode] =
 
 // --- Init command ---
 
-def resolveScalaCliNixUrl(pinSelf: Boolean): IO[String] = {
+private val ShaPattern = "^[0-9a-f]{40}$".r
+
+private def pinSuffix(value: String): String =
+  if (ShaPattern.matches(value)) s"?rev=$value"
+  else s"?ref=$value"
+
+def resolveScalaCliNixUrl(ref: Option[String]): IO[String] = {
   val baseUrl = "github:scala-nix/scala-cli-nix"
-  if (!pinSelf) IO.pure(baseUrl)
-  else
-    IO(sys.env.getOrElse("SCALA_CLI_NIX_SELF_REV", "")).flatMap { rev =>
-      if (rev.nonEmpty) IO.pure(s"$baseUrl?rev=$rev")
-      else
-        IO.raiseError(
-          new RuntimeException(
-            "--pin-self requires SCALA_CLI_NIX_SELF_REV (set by the Nix wrapper from a clean git source); cannot pin from a dirty/local build."
-          )
-        )
-    }
+  ref match {
+    case None                         => IO.pure(baseUrl)
+    case Some(value) if value.isEmpty => IO.pure(baseUrl)
+    case Some(value)                  => IO.pure(s"$baseUrl${pinSuffix(value)}")
+  }
 }
 
-def init(inputs: List[String], pinSelf: Boolean): IO[ExitCode] =
+def init(inputs: List[String], ref: Option[String]): IO[ExitCode] =
   for {
     cwd <- Files[IO].currentWorkingDirectory
     lockExists <- Files[IO].exists(cwd / "scala.lock.json")
@@ -798,11 +798,11 @@ def init(inputs: List[String], pinSelf: Boolean): IO[ExitCode] =
               error("No .scala files found in current directory.")
                 .as(ExitCode.Error)
             else
-              doInit(cwd, pinSelf)
+              doInit(cwd, ref)
           }
   } yield result
 
-private def doInit(cwd: Path, pinSelf: Boolean): IO[ExitCode] = {
+private def doInit(cwd: Path, ref: Option[String]): IO[ExitCode] = {
   val pname = cwd.fileName.toString
 
   def prepareDerivation(
@@ -965,7 +965,7 @@ private def doInit(cwd: Path, pinSelf: Boolean): IO[ExitCode] = {
     )
     _ <- errln("")
     scalaCli <- resolveScalaCli
-    scalaCliNixUrl <- resolveScalaCliNixUrl(pinSelf)
+    scalaCliNixUrl <- resolveScalaCliNixUrl(ref)
     targets <- listTargets(scalaCli, Nil)
     isCross = targets.sizeIs > 1
     derivation <- prepareDerivation(isCross)
@@ -1021,7 +1021,7 @@ object ScalaCliNix extends CommandsEntryPoint {
   private object InitCommand extends Command[InitOptions] {
     override def name: String = "init"
     override def run(options: InitOptions, args: RemainingArgs): Unit =
-      runIO(init(args.remaining.toList, options.pinSelf))
+      runIO(init(args.remaining.toList, options.ref))
   }
 
   private object LockCommand extends Command[LockOptions] {
