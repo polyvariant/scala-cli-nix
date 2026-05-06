@@ -471,7 +471,9 @@ def targetKey(target: Target, allTargets: List[Target]): String = {
 // --- Option case classes ---
 
 case class LockOptions()
-case class InitOptions()
+case class InitOptions(
+    @Name("pin-self") pinSelf: Boolean = false
+)
 
 // --- Lock command ---
 
@@ -761,7 +763,22 @@ def lock(inputs: List[String]): IO[ExitCode] =
 
 // --- Init command ---
 
-def init(inputs: List[String]): IO[ExitCode] =
+def resolveScalaCliNixUrl(pinSelf: Boolean): IO[String] = {
+  val baseUrl = "github:scala-nix/scala-cli-nix"
+  if (!pinSelf) IO.pure(baseUrl)
+  else
+    IO(sys.env.getOrElse("SCALA_CLI_NIX_SELF_REV", "")).flatMap { rev =>
+      if (rev.nonEmpty) IO.pure(s"$baseUrl?rev=$rev")
+      else
+        IO.raiseError(
+          new RuntimeException(
+            "--pin-self requires SCALA_CLI_NIX_SELF_REV (set by the Nix wrapper from a clean git source); cannot pin from a dirty/local build."
+          )
+        )
+    }
+}
+
+def init(inputs: List[String], pinSelf: Boolean): IO[ExitCode] =
   for {
     cwd <- Files[IO].currentWorkingDirectory
     lockExists <- Files[IO].exists(cwd / "scala.lock.json")
@@ -781,11 +798,11 @@ def init(inputs: List[String]): IO[ExitCode] =
               error("No .scala files found in current directory.")
                 .as(ExitCode.Error)
             else
-              doInit(cwd)
+              doInit(cwd, pinSelf)
           }
   } yield result
 
-private def doInit(cwd: Path): IO[ExitCode] = {
+private def doInit(cwd: Path, pinSelf: Boolean): IO[ExitCode] = {
   val pname = cwd.fileName.toString
 
   def prepareDerivation(
@@ -812,7 +829,10 @@ private def doInit(cwd: Path): IO[ExitCode] = {
         )
     }
 
-  def prepareFlake(isCross: Boolean): IO[(List[(Path, String)], List[String])] =
+  def prepareFlake(
+      isCross: Boolean,
+      scalaCliNixUrl: String
+  ): IO[(List[(Path, String)], List[String])] =
     Files[IO].exists(cwd / "flake.nix").flatMap {
       case true =>
         errln("") *>
@@ -821,7 +841,7 @@ private def doInit(cwd: Path): IO[ExitCode] = {
           errln(s"  ${C.bold}1.${C.reset} Add the input:") *>
           errln("") *>
           errln(
-            s"""    ${C.dim}scala-cli-nix.url = "github:scala-nix/scala-cli-nix";${C.reset}"""
+            s"""    ${C.dim}scala-cli-nix.url = "$scalaCliNixUrl";${C.reset}"""
           ) *>
           errln(
             s"""    ${C.dim}scala-cli-nix.inputs.nixpkgs.follows = "nixpkgs";${C.reset}"""
@@ -882,7 +902,7 @@ private def doInit(cwd: Path): IO[ExitCode] = {
           s"""|{
               |  inputs = {
               |    nixpkgs.url = "github:NixOS/nixpkgs";
-              |    scala-cli-nix.url = "github:scala-nix/scala-cli-nix";
+              |    scala-cli-nix.url = "$scalaCliNixUrl";
               |    scala-cli-nix.inputs.nixpkgs.follows = "nixpkgs";
               |  };
               |
@@ -945,10 +965,11 @@ private def doInit(cwd: Path): IO[ExitCode] = {
     )
     _ <- errln("")
     scalaCli <- resolveScalaCli
+    scalaCliNixUrl <- resolveScalaCliNixUrl(pinSelf)
     targets <- listTargets(scalaCli, Nil)
     isCross = targets.sizeIs > 1
     derivation <- prepareDerivation(isCross)
-    flake <- prepareFlake(isCross)
+    flake <- prepareFlake(isCross, scalaCliNixUrl)
     _ <- errln("")
     lockContent <- computeLock(Nil)
     pendingFiles =
@@ -997,8 +1018,9 @@ object ScalaCliNix extends IOApp {
     Map(
       List("init") -> { args =>
         parseOpts[InitOptions](args).flatMap {
-          case None            => IO.pure(ExitCode.Success)
-          case Some((_, rest)) => init(rest.remaining.toList)
+          case None               => IO.pure(ExitCode.Success)
+          case Some((opts, rest)) =>
+            init(rest.remaining.toList, opts.pinSelf)
         }
       },
       List("lock") -> { args =>

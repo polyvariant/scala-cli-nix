@@ -45,13 +45,15 @@
               version = "fork-a172823";
               inherit src;
             });
+          selfRev = self.sourceInfo.rev or "";
         in final.symlinkJoin {
           name = "scala-cli-nix";
           paths = [ base ];
           nativeBuildInputs = [ final.makeWrapper ];
           postBuild = ''
             wrapProgram $out/bin/scala-cli-nix \
-              --set-default SCALA_CLI_NIX_SCALA_CLI ${forkScalaCli}/bin/scala-cli
+              --set-default SCALA_CLI_NIX_SCALA_CLI ${forkScalaCli}/bin/scala-cli \
+              --set-default SCALA_CLI_NIX_SELF_REV ${selfRev}
             ln -s scala-cli-nix $out/bin/scn
           '';
         };

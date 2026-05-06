@@ -186,6 +186,12 @@ Scaffolds a new project:
 
 The generated flake uses the overlay pattern so consumers just do `pkgs.callPackage ./derivation.nix {}`.
 
+#### `--pin-self`
+
+`init --pin-self` pins the generated `scala-cli-nix.url` to the exact revision the running CLI was built from (`github:scala-nix/scala-cli-nix?rev=<rev>` instead of the bare `github:scala-nix/scala-cli-nix`). Useful when scaffolding from a fork or feature branch so consumers don't float to whatever main looks like later.
+
+The rev comes from `SCALA_CLI_NIX_SELF_REV`, set by the `scala-cli-nix-cli` wrapper (`flake.nix`) to `self.sourceInfo.rev`. On dirty/local checkouts `sourceInfo.rev` is absent — the env var ends up empty and `--pin-self` errors out with a message asking to drop the flag or build from a clean rev.
+
 ## Development
 
 ### Project structure
