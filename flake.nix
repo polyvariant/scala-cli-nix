@@ -58,6 +58,10 @@
             # via the standard fpath. Covers both scala-cli-nix and the scn alias.
             install -Dm644 ${./cli/_scala-cli-nix} $out/share/zsh/site-functions/_scala-cli-nix
           '';
+          # symlinkJoin drops passthru by default; forward the unwrapped
+          # derivation's `passthru.tests` so consumers (and our own checks)
+          # can run the CLI's munit suite via `nix flake check`.
+          passthru = base.passthru or { };
         };
       };
 
@@ -78,12 +82,26 @@
             inherit system;
             overlays = [ self.overlays.default ];
           };
+          # Pull `passthru.tests` from every package in `self.packages.<system>`
+          # into checks, mirroring how `init` wires consumer flakes. Same
+          # collection pattern as a generated user flake — eats our own
+          # dogfood for the CLI's munit tests.
+          packages = self.packages.${system};
+          collectTests = pkgName: pkg:
+            let tests = pkg.passthru.tests or { };
+            in nixpkgs.lib.mapAttrs'
+              (testName: drv: { name = "${pkgName}-${testName}"; value = drv; })
+              tests;
+          packageTests = nixpkgs.lib.foldl'
+            (acc: pkgName: acc // collectTests pkgName packages.${pkgName})
+            { }
+            (builtins.attrNames packages);
           example = pkgs.callPackage ./examples/scala3/derivation.nix { };
           example-scala2 = pkgs.callPackage ./examples/scala2/derivation.nix { };
           example-scala-native = pkgs.callPackage ./examples/scala-native/derivation.nix { };
           example-scala-native-ce = pkgs.callPackage ./examples/scala-native-ce/derivation.nix { };
           example-scala-native-ce-cross = pkgs.callPackage ./examples/scala-native-ce-cross/derivation.nix { };
-        in {
+        in packageTests // {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)
             if [ "$output" = "hello world!" ]; then
