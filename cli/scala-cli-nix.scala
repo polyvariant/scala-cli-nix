@@ -1080,11 +1080,12 @@ private def doInit(
       case false =>
         // For cross projects, flatten the attrset from buildScalaCliApps into named packages
         // (e.g. packages.${system}.jvm, packages.${system}.native) — no default package.
-        val packagesBody =
-          if (isCross)
-            """|          pkgs.callPackage ./derivation.nix { }"""
-          else
-            """|          default = pkgs.callPackage ./derivation.nix { };"""
+        // For cross projects, callPackage returns an attrset { jvm = ...; native = ...; }
+        // which becomes the value of `packages.${system}` directly. For single-target,
+        // wrap it as { default = ...; } so `nix build` works without a target name.
+        val packagesExpr =
+          if (isCross) "pkgs.callPackage ./derivation.nix { }"
+          else "{ default = pkgs.callPackage ./derivation.nix { }; }"
         val content =
           s"""|{
               |  inputs = {
@@ -1103,9 +1104,7 @@ private def doInit(
               |            inherit system;
               |            overlays = [ scala-cli-nix.overlays.default ];
               |          };
-              |        in {
-              |$packagesBody
-              |          }
+              |        in $packagesExpr
               |      );
               |
               |      # Pull `passthru.tests` from every package into checks, so
