@@ -87,6 +87,7 @@
           # user flake, so the CLI's munit suite runs under `nix flake check`.
           packageTests = pkgs.scala-cli-nix.collectChecks self.packages.${system};
           example = pkgs.callPackage ./examples/scala3/derivation.nix { };
+          example-scala3-subset = pkgs.callPackage ./examples/scala3-subset/derivation.nix { };
           example-scala2 = pkgs.callPackage ./examples/scala2/derivation.nix { };
           example-scala-native = pkgs.callPackage ./examples/scala-native/derivation.nix { };
           example-scala-native-ce = pkgs.callPackage ./examples/scala-native-ce/derivation.nix { };
@@ -99,6 +100,16 @@
               touch $out
             else
               echo "FAIL: expected 'hello world!', got '$output'"
+              exit 1
+            fi
+          '';
+          example-scala3-subset = pkgs.runCommand "check-example-scala3-subset" { } ''
+            output=$(${example-scala3-subset}/bin/example-scala3-subset)
+            if [ "$output" = "hello from subset!" ]; then
+              echo "OK: example-scala3-subset output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello from subset!', got '$output'"
               exit 1
             fi
           '';

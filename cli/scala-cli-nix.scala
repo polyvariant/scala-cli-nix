@@ -977,6 +977,8 @@ def init(inputs: List[String], ref: Option[String]): IO[ExitCode] =
         info(
           s"${C.bold}scala.lock.json${C.reset} already exists, running ${C.bold}lock${C.reset} instead."
         ) *> lock(inputs)
+      else if (inputs.nonEmpty)
+        doInit(cwd, inputs, ref)
       else
         Files[IO]
           .list(cwd)
@@ -988,11 +990,15 @@ def init(inputs: List[String], ref: Option[String]): IO[ExitCode] =
               error("No .scala files found in current directory.")
                 .as(ExitCode.Error)
             else
-              doInit(cwd, ref)
+              doInit(cwd, inputs, ref)
           }
   } yield result
 
-private def doInit(cwd: Path, ref: Option[String]): IO[ExitCode] = {
+private def doInit(
+    cwd: Path,
+    inputs: List[String],
+    ref: Option[String]
+): IO[ExitCode] = {
   val pname = cwd.fileName.toString
 
   def prepareDerivation(
@@ -1142,12 +1148,12 @@ private def doInit(cwd: Path, ref: Option[String]): IO[ExitCode] = {
     _ <- errln("")
     scalaCli <- resolveScalaCli
     scalaCliNixUrl <- resolveScalaCliNixUrl(ref)
-    targets <- listTargets(scalaCli, Nil)
+    targets <- listTargets(scalaCli, inputs)
     isCross = targets.sizeIs > 1
     derivation <- prepareDerivation(isCross)
     flake <- prepareFlake(isCross, scalaCliNixUrl)
     _ <- errln("")
-    lockContent <- computeLock(Nil)
+    lockContent <- computeLock(inputs)
     pendingFiles =
       derivation._1 ++ flake._1 ++ List(
         (cwd / "scala.lock.json") -> lockContent
