@@ -151,25 +151,24 @@ class HashCache(
     val location: Path
 ) {
   def get(path: Path): IO[String] =
-    (Files[IO].realPath(path), Files[IO].getBasicFileAttributes(path))
-      .flatMapN { (absolute, attrs) =>
-        val key = absolute.toString
-        val size = attrs.size
-        val mtime = attrs.lastModifiedTime.toMillis
-        state.get.flatMap { m =>
-          m.get(key) match {
-            case Some(e) if e.size == size && e.mtime == mtime =>
-              stats.update(s => s.copy(hits = s.hits + 1)).as(e.sha256)
-            case _ =>
-              computeSha256(path).flatTap { hash =>
-                state.update(
-                  _.updated(key, HashCacheEntry(size, mtime, hash))
-                ) *>
-                  stats.update(s => s.copy(misses = s.misses + 1))
-              }
-          }
+    Files[IO].getBasicFileAttributes(path).flatMap { attrs =>
+      val key = path.toString
+      val size = attrs.size
+      val mtime = attrs.lastModifiedTime.toMillis
+      state.get.flatMap { m =>
+        m.get(key) match {
+          case Some(e) if e.size == size && e.mtime == mtime =>
+            stats.update(s => s.copy(hits = s.hits + 1)).as(e.sha256)
+          case _ =>
+            computeSha256(path).flatTap { hash =>
+              state.update(
+                _.updated(key, HashCacheEntry(size, mtime, hash))
+              ) *>
+                stats.update(s => s.copy(misses = s.misses + 1))
+            }
         }
       }
+    }
 
   def currentStats: IO[HashCacheStats] = stats.get
 
@@ -186,9 +185,14 @@ class HashCache(
 }
 
 private def computeSha256(path: Path): IO[String] =
-  Files[IO].readAll(path).compile.to(Array).map { bytes =>
-    val digest = MessageDigest.getInstance("SHA-256")
-    Base64.getEncoder.encodeToString(digest.digest(bytes))
+  IO(MessageDigest.getInstance("SHA-256")).flatMap { digest =>
+    Files[IO]
+      .readAll(path)
+      .chunks
+      .evalMap(c => IO(digest.update(c.toByteBuffer)))
+      .compile
+      .drain
+      .as(Base64.getEncoder.encodeToString(digest.digest()))
   }
 
 object HashCache {
