@@ -143,9 +143,12 @@ case class HashCacheFile(version: Int, entries: Map[String, HashCacheEntry])
 
 private val HashCacheVersion = 1
 
+case class HashCacheStats(hits: Int, misses: Int)
+
 class HashCache(
     state: Ref[IO, Map[String, HashCacheEntry]],
-    location: Path
+    stats: Ref[IO, HashCacheStats],
+    val location: Path
 ) {
   def get(path: Path): IO[String] =
     (Files[IO].realPath(path), Files[IO].getBasicFileAttributes(path))
@@ -156,14 +159,19 @@ class HashCache(
         state.get.flatMap { m =>
           m.get(key) match {
             case Some(e) if e.size == size && e.mtime == mtime =>
-              IO.pure(e.sha256)
+              stats.update(s => s.copy(hits = s.hits + 1)).as(e.sha256)
             case _ =>
               computeSha256(path).flatTap { hash =>
-                state.update(_.updated(key, HashCacheEntry(size, mtime, hash)))
+                state.update(
+                  _.updated(key, HashCacheEntry(size, mtime, hash))
+                ) *>
+                  stats.update(s => s.copy(misses = s.misses + 1))
               }
           }
         }
       }
+
+  def currentStats: IO[HashCacheStats] = stats.get
 
   def save: IO[Unit] =
     state.get
@@ -198,24 +206,26 @@ object HashCache {
     * cache — never fatal.
     */
   def load(location: Path): IO[HashCache] =
-    Files[IO]
-      .exists(location)
-      .flatMap {
-        case false => IO.pure(Map.empty[String, HashCacheEntry])
-        case true  =>
-          readFile(location).attempt.map {
-            case Right(content) =>
-              parseJson(content)
-                .flatMap(_.as[HashCacheFile])
-                .toOption
-                .filter(_.version == HashCacheVersion)
-                .map(_.entries)
-                .getOrElse(Map.empty)
-            case Left(_) => Map.empty
-          }
-      }
-      .flatMap(Ref.of[IO, Map[String, HashCacheEntry]](_))
-      .map(new HashCache(_, location))
+    for {
+      entries <- Files[IO]
+        .exists(location)
+        .flatMap {
+          case false => IO.pure(Map.empty[String, HashCacheEntry])
+          case true  =>
+            readFile(location).attempt.map {
+              case Right(content) =>
+                parseJson(content)
+                  .flatMap(_.as[HashCacheFile])
+                  .toOption
+                  .filter(_.version == HashCacheVersion)
+                  .map(_.entries)
+                  .getOrElse(Map.empty)
+              case Left(_) => Map.empty
+            }
+        }
+      stateRef <- Ref.of[IO, Map[String, HashCacheEntry]](entries)
+      statsRef <- Ref.of[IO, HashCacheStats](HashCacheStats(0, 0))
+    } yield new HashCache(stateRef, statsRef, location)
 }
 
 def sha256Base64(path: Path)(using cache: HashCache): IO[String] =
@@ -1034,7 +1044,13 @@ def withHashCache[A](body: HashCache ?=> IO[A]): IO[A] =
   for {
     location <- HashCache.defaultLocation
     cache <- HashCache.load(location)
-    result <- body(using cache).guarantee(cache.save)
+    result <- body(using cache).guarantee {
+      cache.currentStats.flatMap { s =>
+        info(
+          s"Hash cache: ${C.bold}${s.hits}${C.reset} hits, ${C.bold}${s.misses}${C.reset} misses ${C.dim}(${cache.location})${C.reset}"
+        )
+      } *> cache.save
+    }
   } yield result
 
 def lock(inputs: List[String]): IO[ExitCode] = withHashCache {
