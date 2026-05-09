@@ -10,6 +10,7 @@
 
 import cats.effect.ExitCode
 import cats.effect.IO
+import cats.effect.Ref
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import caseapp.*
@@ -128,11 +129,97 @@ def errln(msg: String): IO[Unit] = IO.consoleForIO.errorln(msg)
 
 // --- Hashing ---
 
-def sha256Base64(path: Path): IO[String] =
+/** Persisted entry for a hashed file. `size`+`mtime` form a cheap freshness
+  * stamp: if either differs from the file's current attributes, we recompute.
+  * Coursier-cached artifacts at non-SNAPSHOT coordinates are immutable, so this
+  * is overwhelmingly cache-hit territory; SNAPSHOTs and re-downloads still get
+  * the right answer because their mtime changes.
+  */
+case class HashCacheEntry(size: Long, mtime: Long, sha256: String)
+    derives Codec.AsObject
+
+case class HashCacheFile(version: Int, entries: Map[String, HashCacheEntry])
+    derives Codec.AsObject
+
+private val HashCacheVersion = 1
+
+class HashCache(
+    state: Ref[IO, Map[String, HashCacheEntry]],
+    location: Path
+) {
+  def get(path: Path): IO[String] =
+    (Files[IO].realPath(path), Files[IO].getBasicFileAttributes(path))
+      .flatMapN { (absolute, attrs) =>
+        val key = absolute.toString
+        val size = attrs.size
+        val mtime = attrs.lastModifiedTime.toMillis
+        state.get.flatMap { m =>
+          m.get(key) match {
+            case Some(e) if e.size == size && e.mtime == mtime =>
+              IO.pure(e.sha256)
+            case _ =>
+              computeSha256(path).flatTap { hash =>
+                state.update(_.updated(key, HashCacheEntry(size, mtime, hash)))
+              }
+          }
+        }
+      }
+
+  def save: IO[Unit] =
+    state.get
+      .flatMap { entries =>
+        val payload = HashCacheFile(HashCacheVersion, entries)
+        val parent = location.parent.getOrElse(location)
+        Files[IO].createDirectories(parent) *>
+          writeFile(location, lockfilePrinter.print(payload.asJson) + "\n")
+      }
+      .attempt
+      .void
+}
+
+private def computeSha256(path: Path): IO[String] =
   Files[IO].readAll(path).compile.to(Array).map { bytes =>
     val digest = MessageDigest.getInstance("SHA-256")
     Base64.getEncoder.encodeToString(digest.digest(bytes))
   }
+
+object HashCache {
+
+  /** Resolve the on-disk cache location, honoring `XDG_CACHE_HOME` and falling
+    * back to `~/.cache/scala-cli-nix/hashes.json`.
+    */
+  def defaultLocation: IO[Path] = IO {
+    val xdg = sys.env.get("XDG_CACHE_HOME").filter(_.nonEmpty)
+    val base = xdg.getOrElse(sys.props("user.home") + "/.cache")
+    Path(base) / "scala-cli-nix" / "hashes.json"
+  }
+
+  /** Load the cache from `location`. Missing or unparseable files give an empty
+    * cache — never fatal.
+    */
+  def load(location: Path): IO[HashCache] =
+    Files[IO]
+      .exists(location)
+      .flatMap {
+        case false => IO.pure(Map.empty[String, HashCacheEntry])
+        case true  =>
+          readFile(location).attempt.map {
+            case Right(content) =>
+              parseJson(content)
+                .flatMap(_.as[HashCacheFile])
+                .toOption
+                .filter(_.version == HashCacheVersion)
+                .map(_.entries)
+                .getOrElse(Map.empty)
+            case Left(_) => Map.empty
+          }
+      }
+      .flatMap(Ref.of[IO, Map[String, HashCacheEntry]](_))
+      .map(new HashCache(_, location))
+}
+
+def sha256Base64(path: Path)(using cache: HashCache): IO[String] =
+  cache.get(path)
 
 def sha1Hex(s: String): String = {
   val digest = MessageDigest.getInstance("SHA-1")
@@ -361,7 +448,7 @@ def collectAccumulatedProperties(
 def collectParentPoms(
     pomPath: Path,
     repoBase: String
-): IO[List[ArtifactEntry]] = {
+)(using HashCache): IO[List[ArtifactEntry]] = {
   def loop(current: Path, acc: List[ArtifactEntry]): IO[List[ArtifactEntry]] =
     extractParent(current).flatMap {
       case Some((groupId, artifactId, version)) if repoBase.nonEmpty =>
@@ -425,7 +512,7 @@ def collectImportedBoms(
     pomPath: Path,
     repoBase: String,
     visited: Set[String] = Set.empty
-): IO[List[ArtifactEntry]] =
+)(using HashCache): IO[List[ArtifactEntry]] =
   if (repoBase.isEmpty) IO.pure(Nil)
   else
     collectBomCoordsFromChain(pomPath, repoBase).flatMap { boms =>
@@ -517,7 +604,7 @@ def parseImportedBoms(
 def collectDeclaredPoms(
     resolvedPomPaths: List[Path],
     resolvedUrls: Set[String]
-): IO[List[ArtifactEntry]] =
+)(using HashCache): IO[List[ArtifactEntry]] =
   resolvedPomPaths.flatTraverse(extractDeclaredDeps).flatMap { allDeclared =>
     val candidates = allDeclared.distinct
       .filterNot { (_, _, v) => v.contains("$") }
@@ -542,7 +629,7 @@ def collectDeclaredPoms(
   */
 def collectEntriesNoRecurse(
     artifacts: List[(Artifact, File)]
-): IO[List[ArtifactEntry]] =
+)(using HashCache): IO[List[ArtifactEntry]] =
   artifacts
     .flatTraverse { (artifact, file) =>
       val url = artifact.getUrl
@@ -576,7 +663,7 @@ def collectEntriesNoRecurse(
 
 def collectEntries(
     artifacts: List[(Artifact, File)]
-): IO[List[ArtifactEntry]] = {
+)(using HashCache): IO[List[ArtifactEntry]] = {
   val resolved: IO[(List[ArtifactEntry], List[Path])] =
     artifacts.foldLeftM((List.empty[ArtifactEntry], List.empty[Path])) {
       case ((entries, poms), (artifact, file)) =>
@@ -705,7 +792,7 @@ val lockfilePrinter: Printer =
 
 /** Compute lockfile content without writing it. Always recomputes from scratch.
   */
-def computeLock(inputs: List[String]): IO[String] = {
+def computeLock(inputs: List[String])(using HashCache): IO[String] = {
   val inputArgs = if (inputs.isEmpty) List(".") else inputs
 
   for {
@@ -761,7 +848,7 @@ private def computeTargetLock(
     cwd: Path,
     target: Target,
     key: String
-): IO[TargetLock] = {
+)(using HashCache): IO[TargetLock] = {
   val versionArgs =
     target.scalaVersion.toList.flatMap(v => List("--scala-version", v))
   val exportArgs =
@@ -808,7 +895,7 @@ private def computeTargetLockContent(
     key: String,
     export_ : ExportInfo,
     exportHash: String
-): IO[TargetLock] = {
+)(using HashCache): IO[TargetLock] = {
   val scalaVersion = export_.scalaVersion
   val scalaMajor = scalaVersion.takeWhile(_ != '.')
   val mainScope = export_.scopes.getOrElse("main", ExportScope(Nil, Nil, Nil))
@@ -940,7 +1027,17 @@ private def computeTargetLockContent(
   }
 }
 
-def lock(inputs: List[String]): IO[ExitCode] =
+/** Load the persistent hash cache, run `body` with it in scope, and save the
+  * cache on the way out (even on failure, so partial progress isn't lost).
+  */
+def withHashCache[A](body: HashCache ?=> IO[A]): IO[A] =
+  for {
+    location <- HashCache.defaultLocation
+    cache <- HashCache.load(location)
+    result <- body(using cache).guarantee(cache.save)
+  } yield result
+
+def lock(inputs: List[String]): IO[ExitCode] = withHashCache {
   for {
     content <- computeLock(inputs)
     cwd <- Files[IO].currentWorkingDirectory
@@ -956,6 +1053,7 @@ def lock(inputs: List[String]): IO[ExitCode] =
           writeFile(lockfilePath, content) *>
           success(s"Wrote ${C.bold}scala.lock.json${C.reset}")
   } yield ExitCode.Success
+}
 
 // --- Init command ---
 
@@ -1004,7 +1102,7 @@ private def doInit(
     cwd: Path,
     inputs: List[String],
     ref: Option[String]
-): IO[ExitCode] = {
+): IO[ExitCode] = withHashCache {
   val pname = cwd.fileName.toString
 
   def prepareDerivation(

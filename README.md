@@ -81,6 +81,10 @@ For single-target projects, `buildScalaCliApp` (singular) returns a single deriv
    - JVM: `makeWrapper` creates an executable referencing individual Nix store JARs on the classpath
    - Native: produces a standalone binary (no JVM required at runtime)
 
+## Caching
+
+`scala-cli-nix lock` keeps a per-user hash cache at `$XDG_CACHE_HOME/scala-cli-nix/hashes.json` (defaulting to `~/.cache/scala-cli-nix/hashes.json`). Each artifact in the Coursier cache is hashed once and reused on subsequent locks as long as its size and mtime haven't changed, so re-running `lock` after a small dep change avoids re-reading every JAR. Deleting the cache file is harmless — it'll be rebuilt on the next run.
+
 ## GitHub Actions
 
 scala-cli-nix ships a reusable composite action that regenerates `scala.lock.json` on every pull request and commits the result if anything changed.
