@@ -1,6 +1,6 @@
 { scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib, clang, which }:
 let
-  supportedVersion = 7;
+  supportedVersion = 8;
 
   fetchAll = deps: builtins.map (dep: { inherit dep; path = builtins.fetchurl dep; }) deps;
 
@@ -16,6 +16,7 @@ let
       test = target: target.test or null;
     in assert versionCheck; {
       sources = json.sources or [];
+      resourceDirs = json.resourceDirs or [];
       targets = builtins.mapAttrs (name: target:
         let
           n = native target;
@@ -32,6 +33,7 @@ let
             if t != null
             then {
               sources = t.sources;
+              resourceDirs = t.resourceDirs or [];
               libraryDependencies = fetchAll t.libraryDependencies;
             }
             else null;
@@ -54,19 +56,29 @@ let
       ) deps;
     in runCommand name {} (builtins.concatStringsSep "\n" linkCommands);
 
-  # Filter `src` down to the listed source files, returning both the filtered
-  # source tree and a space-separated string of source paths to feed scala-cli.
-  prepareSources = sources: src:
+  # Filter `src` down to the listed source files (and resource directories),
+  # returning both the filtered source tree and a space-separated string of
+  # source paths to feed scala-cli. Resource directories are included as
+  # whole subtrees so `using resourceDir` can find them at compile/link time.
+  prepareSources = sources: resourceDirs: src:
     let
+      # Is `rel` inside (or equal to) any resourceDir? Then keep it.
+      insideResourceDir = rel:
+        builtins.any (r: rel == r || lib.hasPrefix (r + "/") rel) resourceDirs;
+      # Is `rel` an ancestor of any resourceDir? Then we must descend into it.
+      ancestorOfResourceDir = rel:
+        builtins.any (r: lib.hasPrefix (rel + "/") r) resourceDirs;
       filteredSrc =
-        if sources != []
+        if sources != [] || resourceDirs != []
         then lib.cleanSourceWith {
           src = src;
           filter = path: type:
             let rel = lib.removePrefix (toString src + "/") (toString path);
             in if type == "directory"
               then builtins.any (s: lib.hasPrefix (rel + "/") s) sources
-              else builtins.elem rel sources;
+                || insideResourceDir rel
+                || ancestorOfResourceDir rel
+              else builtins.elem rel sources || insideResourceDir rel;
         }
         else src;
       sourceArgs =
@@ -87,10 +99,11 @@ let
     mkdir -p $HOME $COURSIER_ARCHIVE_CACHE $SCALA_CLI_HOME
   '';
 
-  buildJvmTest = { pname, version, src, sources, fetched, attrOverrides }:
+  buildJvmTest = { pname, version, src, sources, resourceDirs, fetched, attrOverrides }:
     let
       mainAndTestSources = sources ++ fetched.test.sources;
-      inherit (prepareSources mainAndTestSources src) sourceArgs;
+      mainAndTestResourceDirs = resourceDirs ++ fetched.test.resourceDirs;
+      inherit (prepareSources mainAndTestSources mainAndTestResourceDirs src) sourceArgs;
       # Test classpath was resolved combining main + test deps in a single
       # Coursier resolution; it is sufficient on its own.
       allDeps = fetched.compiler ++ fetched.test.libraryDependencies;
@@ -112,10 +125,11 @@ let
       '';
     }) "JVM");
 
-  buildNativeTest = { pname, version, src, sources, fetched, attrOverrides }:
+  buildNativeTest = { pname, version, src, sources, resourceDirs, fetched, attrOverrides }:
     let
       mainAndTestSources = sources ++ fetched.test.sources;
-      inherit (prepareSources mainAndTestSources src) sourceArgs;
+      mainAndTestResourceDirs = resourceDirs ++ fetched.test.resourceDirs;
+      inherit (prepareSources mainAndTestSources mainAndTestResourceDirs src) sourceArgs;
       allDeps = fetched.compiler ++ fetched.test.libraryDependencies
         ++ fetched.nativeCompilerPlugins ++ fetched.nativeRuntimeDependencies ++ fetched.nativeToolingDependencies;
       depsCache = mkCacheDir "scala-cli-test-deps-${pname}" allDeps;
@@ -137,15 +151,15 @@ let
     }) "Native");
 
   # Build the test derivation attrset for passthru.tests, or {} if no tests.
-  mkTests = { pname, version, src, sources, fetched, attrOverrides }:
+  mkTests = { pname, version, src, sources, resourceDirs, fetched, attrOverrides }:
     if fetched.test == null then {}
     else if fetched.platform == "Native"
-    then { test = buildNativeTest { inherit pname version src sources fetched attrOverrides; }; }
-    else { test = buildJvmTest { inherit pname version src sources fetched attrOverrides; }; };
+    then { test = buildNativeTest { inherit pname version src sources resourceDirs fetched attrOverrides; }; }
+    else { test = buildJvmTest { inherit pname version src sources resourceDirs fetched attrOverrides; }; };
 
-  buildJvmApp = { pname, version, src, sources, fetched, mainClass, attrOverrides }:
+  buildJvmApp = { pname, version, src, sources, resourceDirs, fetched, mainClass, attrOverrides }:
     let
-      inherit (prepareSources sources src) sourceArgs;
+      inherit (prepareSources sources resourceDirs src) sourceArgs;
       allDeps = fetched.compiler ++ fetched.libraryDependencies;
       depsCache = mkCacheDir "scala-cli-deps-${pname}" allDeps;
 
@@ -189,7 +203,7 @@ let
         then mainClass
         else builtins.readFile "${compiledJar}/share/main-class";
 
-      tests = mkTests { inherit pname version src sources fetched attrOverrides; };
+      tests = mkTests { inherit pname version src sources resourceDirs fetched attrOverrides; };
 
     in stdenv.mkDerivation (attrOverrides ({
       inherit pname version;
@@ -203,14 +217,14 @@ let
       '';
     }) "JVM");
 
-  buildNativeApp = { pname, version, src, sources, fetched, attrOverrides }:
+  buildNativeApp = { pname, version, src, sources, resourceDirs, fetched, attrOverrides }:
     let
-      inherit (prepareSources sources src) sourceArgs;
+      inherit (prepareSources sources resourceDirs src) sourceArgs;
       allDeps = fetched.compiler ++ fetched.libraryDependencies
         ++ fetched.nativeCompilerPlugins ++ fetched.nativeRuntimeDependencies ++ fetched.nativeToolingDependencies;
       depsCache = mkCacheDir "scala-cli-deps-${pname}" allDeps;
 
-      tests = mkTests { inherit pname version src sources fetched attrOverrides; };
+      tests = mkTests { inherit pname version src sources resourceDirs fetched attrOverrides; };
     in stdenv.mkDerivation (attrOverrides ({
       inherit pname version;
       dontUnpack = true;
@@ -229,10 +243,10 @@ let
       installPhase = "true";
     }) "Native");
 
-  buildTarget = { pname, version, src, sources, targetFetched, mainClass ? null, attrOverrides }:
+  buildTarget = { pname, version, src, sources, resourceDirs, targetFetched, mainClass ? null, attrOverrides }:
     if targetFetched.platform == "Native"
-    then buildNativeApp { inherit pname version src sources attrOverrides; fetched = targetFetched; }
-    else buildJvmApp { inherit pname version src sources mainClass attrOverrides; fetched = targetFetched; };
+    then buildNativeApp { inherit pname version src sources resourceDirs attrOverrides; fetched = targetFetched; }
+    else buildJvmApp { inherit pname version src sources resourceDirs mainClass attrOverrides; fetched = targetFetched; };
 
   # Normalize dots to underscores for Nix attribute name ergonomics
   nixKey = key: builtins.replaceStrings [ "." ] [ "_" ] key;
@@ -264,6 +278,7 @@ in {
           value = buildTarget {
             inherit pname version src mainClass attrOverrides;
             sources = fetched.sources;
+            resourceDirs = fetched.resourceDirs;
             targetFetched = fetched.targets.${key};
           };
         }
@@ -286,6 +301,7 @@ in {
     in buildTarget {
       inherit pname version src mainClass attrOverrides;
       sources = fetched.sources;
+      resourceDirs = fetched.resourceDirs;
       targetFetched = fetched.targets.${resolvedTarget};
     };
 }

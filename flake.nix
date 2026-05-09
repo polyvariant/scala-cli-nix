@@ -92,6 +92,7 @@
           example-scala-native = pkgs.callPackage ./examples/scala-native/derivation.nix { };
           example-scala-native-ce = pkgs.callPackage ./examples/scala-native-ce/derivation.nix { };
           example-scala-native-ce-cross = pkgs.callPackage ./examples/scala-native-ce-cross/derivation.nix { };
+          example-scala-resources = pkgs.callPackage ./examples/scala-resources/derivation.nix { };
         in packageTests // {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)
@@ -161,6 +162,26 @@
               touch $out
             else
               echo "FAIL: expected 'hello from scala jvm/native with cats-effect!', got '$output'"
+              exit 1
+            fi
+          '';
+          example-scala-resources-jvm = pkgs.runCommand "check-example-scala-resources-jvm" { } ''
+            output=$(${example-scala-resources.jvm}/bin/example-scala-resources)
+            if [ "$output" = "hello from embedded resource!" ]; then
+              echo "OK: example-scala-resources-jvm output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello from embedded resource!', got '$output'"
+              exit 1
+            fi
+          '';
+          example-scala-resources-native = pkgs.runCommand "check-example-scala-resources-native" { } ''
+            output=$(${example-scala-resources.native}/bin/example-scala-resources)
+            if [ "$output" = "hello from embedded resource!" ]; then
+              echo "OK: example-scala-resources-native output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello from embedded resource!', got '$output'"
               exit 1
             fi
           '';

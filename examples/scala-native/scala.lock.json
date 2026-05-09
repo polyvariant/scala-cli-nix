@@ -1,4 +1,6 @@
 {
+  "resourceDirs": [
+  ],
   "sources": [
     "hello.scala"
   ],
@@ -446,7 +448,7 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.1/scala-reflect-2.13.1.pom"
         }
       ],
-      "exportHash": "e04afcb06b3e8c92b278f41de857849b9719efc4",
+      "exportHash": "75df84c8a3baed7a10741f7f6704a2dffd3cdc23",
       "libraryDependencies": [
         {
           "sha256": "Q+DKFYPfGWbq8C8Pvdz7N4S5ld0Gv8kHIJNHdYzkt+M=",
@@ -2887,11 +2889,13 @@
             "url": "https://repo1.maven.org/maven2/com/github/sbt/junit-interface/0.13.3/junit-interface-0.13.3.pom"
           }
         ],
+        "resourceDirs": [
+        ],
         "sources": [
           "hello.test.scala"
         ]
       }
     }
   },
-  "version": 7
+  "version": 8
 }

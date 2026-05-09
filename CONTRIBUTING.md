@@ -14,15 +14,16 @@ Implemented in `cli/scala-cli-nix.scala` (Scala 3). The CLI is itself built by `
 4. For each JAR, the adjacent POM is found in the Coursier cache. Parent POMs are discovered by walking the `<parent>` chain, parsed with `scala-xml`. SHA-256 hashes are computed in-process via `java.security.MessageDigest` — no `nix hash file` needed.
 5. The output is `scala.lock.json` with one section per target.
 
-#### Lockfile format (`scala.lock.json`, version 7)
+#### Lockfile format (`scala.lock.json`, version 8)
 
 The lockfile uses a multi-target format. Each target (a platform/Scala version combination) has its own section under the `targets` key.
 
 **Cross-platform example** (1 Scala version, 2 platforms):
 ```json
 {
-  "version": 7,
+  "version": 8,
   "sources": ["hello.scala"],
+  "resourceDirs": ["resources"],
   "targets": {
     "jvm": {
       "scalaVersion": "3.6.4",
@@ -51,8 +52,9 @@ The lockfile uses a multi-target format. Each target (a platform/Scala version c
 **Single-target example** (standard JVM project):
 ```json
 {
-  "version": 7,
+  "version": 8,
   "sources": ["foo.scala"],
+  "resourceDirs": [],
   "targets": {
     "jvm": {
       "scalaVersion": "3.8.3",
@@ -71,6 +73,7 @@ The lockfile uses a multi-target format. Each target (a platform/Scala version c
   ...,
   "test": {
     "sources": ["foo.test.scala"],
+    "resourceDirs": ["test-resources"],
     "libraryDependencies": [...]
   }
 }
@@ -90,13 +93,14 @@ Target keys use only the dimensions that vary:
 
 ##### Field reference
 
-- `version` — schema version (7). Checked at build time; mismatch causes a build error directing the user to re-lock.
+- `version` — schema version (8). Checked at build time; mismatch causes a build error directing the user to re-lock.
 - `sources` — top-level, shared across targets. Lists source files relative to the project root.
+- `resourceDirs` — top-level, shared across targets. Resource directories declared via `//> using resourceDir` (or equivalent CLI options), as paths relative to the project root. The build pulls each directory into the filtered source tree as a whole subtree so `scala-cli package` embeds its contents into the JAR (JVM) or the linked binary (Native).
 - `targets.<key>.exportHash` — SHA-1 hex digest of the canonicalized (sorted keys, no spaces) `scala-cli export --json` output for this target, followed by a newline. Used for per-target staleness detection.
 - `targets.<key>.platform` — `"JVM"` or `"Native"`. Determines the build strategy.
 - `targets.<key>.compiler` / `libraryDependencies` — JARs, their POMs, and parent POMs. Parent POMs are needed because Coursier resolves version inheritance from parent POMs during offline resolution.
 - `targets.<key>.native` — present for Scala Native targets. Its three sub-fields (`compilerPlugins`, `runtimeDependencies`, `toolingDependencies`) are resolved independently because tooling dependencies target Scala 2.12, while the others use the project's Scala version.
-- `targets.<key>.test` — optional. Present when the project has test sources or test-only deps. Contains `sources` (test source files) and `libraryDependencies` (full main+test classpath; reuses the target's `compiler` and `native` blocks).
+- `targets.<key>.test` — optional. Present when the project has test sources or test-only deps. Contains `sources` (test source files), `resourceDirs` (test-scope resource directories, merged with the top-level `resourceDirs` when running tests), and `libraryDependencies` (full main+test classpath; reuses the target's `compiler` and `native` blocks).
 
 #### Coursier cache path structure
 
@@ -133,7 +137,7 @@ Both functions pass `--platform` and `--scala-version` flags to `scala-cli packa
 #### JVM builds
 
 1. **Per-artifact FODs**: Each `{url, sha256}` entry becomes a `builtins.fetchurl` call. Each is its own Fixed-Output Derivation in the Nix store — updating one dependency only re-downloads that one JAR.
-2. **Source filtering**: The `src` is filtered using `lib.cleanSourceWith` to only include files listed in the lockfile's `sources` array. This means changes to unrelated files (e.g. `README.md`, `flake.nix`) don't trigger a rebuild.
+2. **Source filtering**: The `src` is filtered using `lib.cleanSourceWith` to only include files listed in the lockfile's `sources` array, plus everything under each `resourceDirs` entry (so `using resourceDir` keeps working). This means changes to unrelated files (e.g. `README.md`, `flake.nix`) don't trigger a rebuild.
 3. **Deps cache**: All fetched artifacts are symlinked into a Coursier-compatible cache layout (`mkCacheDir`). This is set as `COURSIER_CACHE` so `scala-cli --offline` can resolve dependencies.
 4. **Compilation**: `scala-cli --power package <sources> --server=false --offline --library --platform jvm --scala-version <v>` compiles user code into a small JAR (~4KB) containing only the compiled classes, no bundled dependencies.
 5. **Main class discovery**: Unless `mainClass` is explicitly passed, `scala-cli --power run --main-class-list <sources> --server=false --offline` is run inside the sandbox to find the main class. If there isn't exactly one, the build fails with an error asking the user to pass `mainClass` explicitly.
@@ -214,6 +218,7 @@ examples/
   scala-native/        # Scala Native example (hello world)
   scala-native-ce/     # Scala Native + cats-effect example
   scala-native-ce-cross/  # Cross JVM+Native example (cats-effect)
+  scala-resources/        # Cross JVM+Native example using //> using resourceDir
 ```
 
 ### Running checks

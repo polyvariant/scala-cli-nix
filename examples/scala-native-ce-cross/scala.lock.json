@@ -1,4 +1,6 @@
 {
+  "resourceDirs": [
+  ],
   "sources": [
     "hello.scala"
   ],
@@ -438,7 +440,7 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.1/scala-reflect-2.13.1.pom"
         }
       ],
-      "exportHash": "160ad5c57a15d00ae28c7ea7370c474d1bfb89d4",
+      "exportHash": "4fa699b34958d72c606deefbe44ed5bf16f26591",
       "libraryDependencies": [
         {
           "sha256": "pq+q0nTioPu9GJv+Og6RgQvVYnRVc5lQEZQ0J+pIkEA=",
@@ -1171,7 +1173,7 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.1/scala-reflect-2.13.1.pom"
         }
       ],
-      "exportHash": "fe4efd0079fd6280bf77064018ddc864c140fb11",
+      "exportHash": "aefe54a9069f315c547da9ef5544dafee685d13f",
       "libraryDependencies": [
         {
           "sha256": "RkKrTGrS3HlNoHHO4LIvrMIzDj1dGI1rvi/35hdyUYc=",
@@ -3163,5 +3165,5 @@
       "scalaVersion": "3.6.4"
     }
   },
-  "version": 7
+  "version": 8
 }

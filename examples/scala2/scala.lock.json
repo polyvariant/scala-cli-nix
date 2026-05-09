@@ -1,4 +1,6 @@
 {
+  "resourceDirs": [
+  ],
   "sources": [
     "app.scala"
   ],
@@ -54,7 +56,7 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-compiler/2.13.18/scala-compiler-2.13.18.pom"
         }
       ],
-      "exportHash": "9e04e3b4af6a6466dd3b270b15e3190a989e7be1",
+      "exportHash": "701b8957c3b237cdc645ad70071a64c45eff1306",
       "libraryDependencies": [
         {
           "sha256": "IK8jHCIvxxwp4Gs82NkZCha0EtqDzEn7C3eM8txvlNI=",
@@ -117,5 +119,5 @@
       "scalaVersion": "2.13.18"
     }
   },
-  "version": 7
+  "version": 8
 }

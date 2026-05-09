@@ -42,6 +42,7 @@ case class NativeLockDeps(
 
 case class TestLock(
     sources: List[String],
+    resourceDirs: List[String],
     libraryDependencies: List[ArtifactEntry]
 ) derives Codec.AsObject
 
@@ -58,6 +59,7 @@ case class TargetLock(
 case class LockFile(
     version: Int,
     sources: List[String],
+    resourceDirs: List[String],
     targets: Map[String, TargetLock]
 ) derives Codec.AsObject
 
@@ -73,14 +75,16 @@ case class ExportDependency(
 
 case class ExportScope(
     sources: List[String],
+    resourceDirs: List[String],
     dependencies: List[ExportDependency]
 )
 object ExportScope {
   given Decoder[ExportScope] = Decoder.instance { c =>
     for {
       sources <- c.get[List[String]]("sources")
+      resourceDirs <- c.getOrElse[List[String]]("resourceDirs")(Nil)
       deps <- c.getOrElse[List[ExportDependency]]("dependencies")(Nil)
-    } yield ExportScope(sources, deps)
+    } yield ExportScope(sources, resourceDirs, deps)
   }
 }
 
@@ -732,10 +736,10 @@ def computeLock(inputs: List[String]): IO[String] = {
           new RuntimeException(s"Failed to parse export JSON: ${e.getMessage}")
         )
     )
-    sources = firstExport.scopes
-      .getOrElse("main", ExportScope(Nil, Nil))
-      .sources
-      .map(stripCwd(cwd))
+    firstMainScope = firstExport.scopes
+      .getOrElse("main", ExportScope(Nil, Nil, Nil))
+    sources = firstMainScope.sources.map(stripCwd(cwd))
+    resourceDirs = firstMainScope.resourceDirs.map(stripCwd(cwd))
 
     targetLocks <- targets.traverse { target =>
       val key = targetKey(target, targets)
@@ -743,8 +747,9 @@ def computeLock(inputs: List[String]): IO[String] = {
     }
 
     lockFile = LockFile(
-      version = 7,
+      version = 8,
       sources = sources,
+      resourceDirs = resourceDirs,
       targets = targetLocks.toMap
     )
   } yield lockfilePrinter.print(lockFile.asJson) + "\n"
@@ -806,7 +811,7 @@ private def computeTargetLockContent(
 ): IO[TargetLock] = {
   val scalaVersion = export_.scalaVersion
   val scalaMajor = scalaVersion.takeWhile(_ != '.')
-  val mainScope = export_.scopes.getOrElse("main", ExportScope(Nil, Nil))
+  val mainScope = export_.scopes.getOrElse("main", ExportScope(Nil, Nil, Nil))
   val testScope = export_.scopes.get("test")
   val deps = mainScope.dependencies.map { d =>
     s"${d.groupId}:${d.artifactId.fullName}:${d.version}"
@@ -905,6 +910,7 @@ private def computeTargetLockContent(
               testEntries <- collectEntries(testArtifacts)
             } yield TestLock(
               sources = tScope.sources.map(stripCwd(cwd)),
+              resourceDirs = tScope.resourceDirs.map(stripCwd(cwd)),
               libraryDependencies = testEntries
             )
           }

@@ -1,4 +1,6 @@
 {
+  "resourceDirs": [
+  ],
   "sources": [
     "scala-cli-nix.scala"
   ],
@@ -2818,11 +2820,13 @@
             "url": "https://repo1.maven.org/maven2/com/google/j2objc/j2objc-annotations/3.0.0/j2objc-annotations-3.0.0.pom"
           }
         ],
+        "resourceDirs": [
+        ],
         "sources": [
           "scala-cli-nix.test.scala"
         ]
       }
     }
   },
-  "version": 7
+  "version": 8
 }
