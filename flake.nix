@@ -94,6 +94,7 @@
           example-scala-native-ce = pkgs.callPackage ./examples/scala-native-ce/derivation.nix { };
           example-scala-native-ce-cross = pkgs.callPackage ./examples/scala-native-ce-cross/derivation.nix { };
           example-scala-resources = pkgs.callPackage ./examples/scala-resources/derivation.nix { };
+          example-sbt = pkgs.callPackage ./examples/sbt/derivation.nix { };
         in packageTests // {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)
@@ -183,6 +184,16 @@
               touch $out
             else
               echo "FAIL: expected 'hello from embedded resource!', got '$output'"
+              exit 1
+            fi
+          '';
+          example-sbt = pkgs.runCommand "check-example-sbt" { } ''
+            output=$(${example-sbt}/bin/example-sbt)
+            if [ "$output" = "hello from sbt!" ]; then
+              echo "OK: example-sbt output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello from sbt!', got '$output'"
               exit 1
             fi
           '';

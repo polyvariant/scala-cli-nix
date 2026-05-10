@@ -794,6 +794,7 @@ def targetKey(target: Target, allTargets: List[Target]): String = {
 // --- Option case classes ---
 
 case class LockOptions()
+case class LockSbtOptions()
 case class InitOptions(
     ref: Option[String] = None
 )
@@ -1304,6 +1305,230 @@ private def doInit(
   } yield ExitCode.Success
 }
 
+// --- sbt lock command (POC) ---
+//
+// Locks an sbt-managed project by injecting a one-off task that emits a JSON
+// manifest of (scalaVersion, mainClass, sources, declared libraryDependencies),
+// then reusing the existing Coursier resolution + hashing pipeline to produce
+// a standard v8 lockfile with a single `jvm` target. The build path in lib.nix
+// is unchanged — scala-cli compiles the sources inside the sandbox just like
+// it would for a scala-cli-native project.
+
+private val SbtManifestSentinelBegin = "##SCN_MANIFEST_BEGIN##"
+private val SbtManifestSentinelEnd = "##SCN_MANIFEST_END##"
+
+// Injected sbt task. Avoid triple-quoted strings here so it can live inside
+// a Scala 3 raw-triple-quoted string literal on the host side.
+private val SbtManifestSbt: String =
+  """TaskKey[Unit]("scnManifest") := {
+    |  val sv = scalaVersion.value
+    |  val sbv = scalaBinaryVersion.value
+    |  val mc = (Compile / mainClass).value
+    |  val declared = libraryDependencies.value
+    |  val deps: Seq[(String, String, String)] = declared.flatMap { m =>
+    |    val isRuntime = m.configurations.forall(c => c == "compile" || c == "runtime" || c == "default")
+    |    if (!isRuntime) None
+    |    else {
+    |      val isScalaStd =
+    |        m.organization == "org.scala-lang" &&
+    |          (m.name == "scala-library" || m.name == "scala3-library" ||
+    |           m.name == "scala-compiler" || m.name == "scala3-compiler" ||
+    |           m.name == "scala-reflect")
+    |      if (isScalaStd) None
+    |      else {
+    |        val name = m.crossVersion match {
+    |          case _: CrossVersion.Binary => m.name + "_" + sbv
+    |          case _: CrossVersion.Full   => m.name + "_" + sv
+    |          case _                      => m.name
+    |        }
+    |        Some((m.organization, name, m.revision))
+    |      }
+    |    }
+    |  }.distinct
+    |  val mainSources = (Compile / sources).value
+    |  val base = baseDirectory.value.toPath
+    |  val rel = mainSources.map(f => base.relativize(f.toPath).toString).sorted
+    |  def q(s: String): String =
+    |    "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    |  def arr(items: Seq[String]): String = items.mkString("[", ",", "]")
+    |  val depsJson = deps.map { case (g, a, v) =>
+    |    "{\"groupId\":" + q(g) + ",\"artifactId\":" + q(a) + ",\"version\":" + q(v) + "}"
+    |  }
+    |  val srcJson = rel.map(q)
+    |  val mainJson = mc match { case Some(m) => q(m); case None => "null" }
+    |  val payload =
+    |    "{\"scalaVersion\":" + q(sv) +
+    |      ",\"mainClass\":" + mainJson +
+    |      ",\"sources\":" + arr(srcJson) +
+    |      ",\"dependencies\":" + arr(depsJson) + "}"
+    |  println("##SCN_MANIFEST_BEGIN##")
+    |  println(payload)
+    |  println("##SCN_MANIFEST_END##")
+    |}
+    |""".stripMargin
+
+case class SbtManifestDep(groupId: String, artifactId: String, version: String)
+    derives Decoder
+case class SbtManifest(
+    scalaVersion: String,
+    mainClass: Option[String],
+    sources: List[String],
+    dependencies: List[SbtManifestDep]
+) derives Decoder
+
+private def runSbtManifest(projectDir: Path): IO[SbtManifest] = {
+  val manifestSbt = projectDir / "scn-manifest.sbt"
+  val writeManifest = writeFile(manifestSbt, SbtManifestSbt)
+  val cleanupManifest = Files[IO].deleteIfExists(manifestSbt).void
+  val runSbt =
+    ProcessBuilder("sbt", List("-no-colors", "-batch", "scnManifest"))
+      .withWorkingDirectory(projectDir)
+      .spawn[IO]
+      .use { proc =>
+        val stdout = proc.stdout.through(fs2.text.utf8.decode).compile.string
+        val stderr = proc.stderr.through(fs2.io.stderr[IO]).compile.drain
+        (stdout, stderr).parTupled.flatMap { case (out, _) =>
+          proc.exitValue.flatMap { code =>
+            IO.raiseError(
+              new RuntimeException(s"sbt exited with code $code")
+            ).whenA(code != 0)
+              .as(out)
+          }
+        }
+      }
+  (writeManifest *> runSbt).guarantee(cleanupManifest).flatMap { out =>
+    val beginIdx = out.indexOf(SbtManifestSentinelBegin)
+    val endIdx = out.indexOf(SbtManifestSentinelEnd)
+    if (beginIdx < 0 || endIdx < 0)
+      IO.raiseError(
+        new RuntimeException(
+          s"sbt output did not contain manifest sentinels. Output:\n$out"
+        )
+      )
+    else {
+      val payload =
+        out.substring(beginIdx + SbtManifestSentinelBegin.length, endIdx).trim
+      IO.fromEither(
+        parseJson(payload)
+          .flatMap(_.as[SbtManifest])
+          .leftMap(e =>
+            new RuntimeException(s"Failed to parse sbt manifest: $e\n$payload")
+          )
+      )
+    }
+  }
+}
+
+def computeSbtLock(projectDir: Path, manifest: SbtManifest)(using
+    HashCache
+): IO[String] =
+  for {
+    _ <- info(s"Scala version: ${C.bold}${manifest.scalaVersion}${C.reset}")
+    _ <- info(
+      s"Main class: ${C.bold}${manifest.mainClass.getOrElse("<unset>")}${C.reset}"
+    )
+    _ <- info(
+      s"Found ${C.bold}${manifest.dependencies.size}${C.reset} declared dependencies"
+    )
+
+    scalaVersion = manifest.scalaVersion
+    scalaMajor = scalaVersion.takeWhile(_ != '.')
+
+    (compilerArtifact, libraryArtifact) <- IO {
+      scalaMajor match {
+        case "3" =>
+          (
+            Dependency.of("org.scala-lang", "scala3-compiler_3", scalaVersion),
+            Dependency.of("org.scala-lang", "scala3-library_3", scalaVersion)
+          )
+        case "2" =>
+          (
+            Dependency.of("org.scala-lang", "scala-compiler", scalaVersion),
+            Dependency.of("org.scala-lang", "scala-library", scalaVersion)
+          )
+        case other =>
+          sys.error(s"Unsupported Scala major version: $other")
+      }
+    }
+
+    userDeps = manifest.dependencies.map(d =>
+      Dependency.of(d.groupId, d.artifactId, d.version)
+    )
+
+    _ <- step("Fetching compiler dependencies...")
+    compilerArtifacts <- fetchArtifacts(compilerArtifact)
+    _ <- info(
+      s"Compiler: ${C.bold}${compilerArtifacts.size}${C.reset} artifacts"
+    )
+
+    _ <- step("Fetching library dependencies...")
+    libArtifacts <- fetchArtifacts((libraryArtifact +: userDeps)*)
+    _ <- info(
+      s"Libraries: ${C.bold}${libArtifacts.size}${C.reset} artifacts (transitive)"
+    )
+
+    _ <- step("Hashing artifacts...")
+    compilerEntries <- collectEntries(compilerArtifacts)
+    libEntries <- collectEntries(libArtifacts)
+
+    target = TargetLock(
+      scalaVersion = scalaVersion,
+      platform = "JVM",
+      exportHash = sha1Hex(scalaVersion + "|sbt"),
+      compiler = compilerEntries,
+      libraryDependencies = libEntries,
+      native = None,
+      test = None
+    )
+
+    // Include the auto-generated directives file so scala-cli sees the
+    // `using dep` lines at compile time in the Nix sandbox.
+    allSources = ("scn-deps.scala" :: manifest.sources).sorted
+    lockFile = LockFile(
+      version = 8,
+      sources = allSources,
+      resourceDirs = Nil,
+      targets = Map("jvm" -> target)
+    )
+  } yield lockfilePrinter.print(lockFile.asJson) + "\n"
+
+/** Materialize the user's declared deps as a `using dep` directive file so
+  * scala-cli (which compiles the sources inside the Nix sandbox) sees them.
+  * This file is tracked alongside the project's sources and overwritten on each
+  * lock-sbt run.
+  */
+private def writeScnDepsFile(
+    cwd: Path,
+    manifest: SbtManifest
+): IO[Unit] = {
+  val lines =
+    "// Auto-generated by scala-cli-nix lock-sbt. Do not edit." ::
+      manifest.dependencies.map(d =>
+        s"//> using dep ${d.groupId}:${d.artifactId}:${d.version}"
+      )
+  writeFile(cwd / "scn-deps.scala", lines.mkString("\n") + "\n")
+}
+
+def lockSbt: IO[ExitCode] = withHashCache {
+  for {
+    cwd <- Files[IO].currentWorkingDirectory
+    _ <- step("Running sbt manifest task...")
+    manifest <- runSbtManifest(cwd)
+    _ <- writeScnDepsFile(cwd, manifest)
+    content <- computeSbtLock(cwd, manifest)
+    lockfilePath = cwd / "scala.lock.json"
+    existing <- Files[IO]
+      .exists(lockfilePath)
+      .ifM(readFile(lockfilePath), IO.pure(""))
+    _ <-
+      if (existing == content) info("Lock is up to date.")
+      else
+        step("Writing lockfile...") *>
+          writeFile(lockfilePath, content) *>
+          success(s"Wrote ${C.bold}scala.lock.json${C.reset}")
+  } yield ExitCode.Success
+}
+
 // --- Main ---
 
 /** Run an `IO[ExitCode]` and exit the JVM with the resulting code. We bridge
@@ -1319,7 +1544,8 @@ private def runIO(program: IO[ExitCode]): Unit = {
 object ScalaCliNix extends CommandsEntryPoint {
   override def progName: String = "scala-cli-nix"
   override def description: String = "Nix packaging for scala-cli apps"
-  override def commands: Seq[Command[?]] = Seq(InitCommand, LockCommand)
+  override def commands: Seq[Command[?]] =
+    Seq(InitCommand, LockCommand, LockSbtCommand)
   override def enableCompleteCommand: Boolean = true
   override def enableCompletionsCommand: Boolean = true
 
@@ -1333,5 +1559,11 @@ object ScalaCliNix extends CommandsEntryPoint {
     override def name: String = "lock"
     override def run(options: LockOptions, args: RemainingArgs): Unit =
       runIO(lock(args.remaining.toList))
+  }
+
+  private object LockSbtCommand extends Command[LockSbtOptions] {
+    override def name: String = "lock-sbt"
+    override def run(options: LockSbtOptions, args: RemainingArgs): Unit =
+      runIO(lockSbt)
   }
 }
