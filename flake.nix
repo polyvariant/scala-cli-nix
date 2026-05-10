@@ -62,6 +62,7 @@
           # derivation's `passthru.tests` so consumers (and our own checks)
           # can run the CLI's munit suite via `nix flake check`.
           passthru = base.passthru or { };
+          meta.mainProgram = "scala-cli-nix";
         };
       };
 

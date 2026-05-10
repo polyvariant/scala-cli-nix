@@ -210,6 +210,7 @@ let
       dontUnpack = true;
       buildInputs = [ openjdk makeWrapper ];
       passthru = { inherit tests; };
+      meta.mainProgram = pname;
       installPhase = ''
         mkdir -p $out/bin
         makeWrapper ${openjdk}/bin/java $out/bin/${pname} \
@@ -230,6 +231,7 @@ let
       dontUnpack = true;
       buildInputs = [ scala-cli openjdk clang which ];
       passthru = { inherit tests; };
+      meta.mainProgram = pname;
 
       COURSIER_CACHE = depsCache;
 
