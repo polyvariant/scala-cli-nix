@@ -593,14 +593,76 @@ def collectImportedBoms(
   * tuples for each <dependency> in the POM's <dependencies> section. Excludes
   * deps inside <dependencyManagement>. May include unresolved property
   * placeholders like ${project.version} — caller filters those out.
+  *
+  * Dependencies without a `<version>` element (version inherited from the
+  * parent POM's `<dependencyManagement>`) are returned with the empty string as
+  * version — the caller should resolve those via
+  * `collectAccumulatedDependencyManagement`.
   */
 def parseDeclaredDeps(pomContent: String): List[(String, String, String)] = {
   val root = loadPom(pomContent)
-  (root \ "dependencies" \ "dependency").toList.flatMap(parseGAV(_))
+  (root \ "dependencies" \ "dependency").toList.flatMap { dep =>
+    for {
+      g <- childText(dep, "groupId")
+      a <- childText(dep, "artifactId")
+    } yield (g, a, childText(dep, "version").getOrElse(""))
+  }
 }
 
 def extractDeclaredDeps(pomPath: Path): IO[List[(String, String, String)]] =
   readFile(pomPath).map(parseDeclaredDeps)
+
+/** Extract (groupId, artifactId) → version entries from a POM's own
+  * `<dependencyManagement>`, excluding scope=import BOMs (those are handled via
+  * `parseImportedBoms`).
+  */
+def parseDependencyManagement(
+    pomContent: String,
+    properties: Map[String, String] = Map.empty
+): Map[(String, String), String] = {
+  val root = loadPom(pomContent)
+  val entries = root \ "dependencyManagement" \ "dependencies" \ "dependency"
+  entries.toList.flatMap { dep =>
+    val isImport = childText(dep, "scope").contains("import")
+    if (isImport) Nil
+    else
+      parseGAV(dep).toList.flatMap { (g, a, v) =>
+        val resolved = substituteProperties(v, properties)
+        Option.when(!resolved.contains("$"))(((g, a), resolved))
+      }
+  }.toMap
+}
+
+/** Walk a POM's parent chain and merge `<dependencyManagement>` entries.
+  * Descendants override ancestors. Scope=import BOMs are NOT expanded here —
+  * use them as a starting point only.
+  */
+def collectAccumulatedDependencyManagement(
+    pomPath: Path,
+    repoBase: String
+): IO[Map[(String, String), String]] = {
+  def loop(
+      current: Path,
+      acc: Map[(String, String), String]
+  ): IO[Map[(String, String), String]] =
+    readFile(current).flatMap { content =>
+      val props = parseProperties(content)
+      val own = parseDependencyManagement(content, props)
+      extractParent(current).flatMap {
+        case Some((g, a, v)) if repoBase.nonEmpty =>
+          val groupPath = g.replace('.', '/')
+          val parentUrl = s"$repoBase$groupPath/$a/$v/$a-$v.pom"
+          val parentPath = cachePathForUrl(parentUrl)
+          Files[IO].exists(parentPath).flatMap {
+            case true =>
+              loop(parentPath, acc).map(parentAcc => parentAcc ++ own)
+            case false => IO.pure(acc ++ own)
+          }
+        case _ => IO.pure(acc ++ own)
+      }
+    }
+  loop(pomPath, Map.empty)
+}
 
 /** Top-level POM version. Falls back to the parent's <version> when missing
   * (POM inherits the version from its parent).
@@ -649,24 +711,40 @@ def collectDeclaredPoms(
     resolvedPomPaths: List[Path],
     resolvedUrls: Set[String]
 )(using HashCache): IO[List[ArtifactEntry]] =
-  resolvedPomPaths.flatTraverse(extractDeclaredDeps).flatMap { allDeclared =>
-    val candidates = allDeclared.distinct
-      .filterNot { (_, _, v) => v.contains("$") }
-      // Skip resolved winners (their JAR URL would already appear in resolvedUrls)
-      .filterNot { (g, a, v) =>
-        resolvedUrls.exists { u =>
-          u.contains(s"${g.replace('.', '/')}/$a/$v/")
+  // For each resolved POM, gather (g,a,v) declared deps plus a
+  // dependencyManagement map (POM + ancestors) to fill in missing versions.
+  resolvedPomPaths
+    .flatTraverse { pomPath =>
+      for {
+        content <- readFile(pomPath)
+        repoBase <- repoBaseForPom(pomPath, urlForCachePath(pomPath))
+        depMgmt <- collectAccumulatedDependencyManagement(pomPath, repoBase)
+        declared = parseDeclaredDeps(content)
+        // Resolve missing versions from depMgmt.
+        withVersion = declared.flatMap { case (g, a, v) =>
+          val resolved = if (v.isEmpty) depMgmt.get((g, a)) else Some(v)
+          resolved.map(rv => (g, a, rv))
+        }
+      } yield withVersion
+    }
+    .flatMap { allDeclared =>
+      val candidates = allDeclared.distinct
+        .filterNot { (_, _, v) => v.contains("$") }
+        // Skip resolved winners (their JAR URL would already appear in resolvedUrls)
+        .filterNot { (g, a, v) =>
+          resolvedUrls.exists { u =>
+            u.contains(s"${g.replace('.', '/')}/$a/$v/")
+          }
+        }
+
+      candidates.flatTraverse { (g, a, v) =>
+        val dep = Dependency.of(g, a, v)
+        fetchArtifacts(dep).attempt.flatMap {
+          case Right(arts) => collectEntriesNoRecurse(arts)
+          case Left(_)     => IO.pure(List.empty[ArtifactEntry])
         }
       }
-
-    candidates.flatTraverse { (g, a, v) =>
-      val dep = Dependency.of(g, a, v)
-      fetchArtifacts(dep).attempt.flatMap {
-        case Right(arts) => collectEntriesNoRecurse(arts)
-        case Left(_)     => IO.pure(List.empty[ArtifactEntry])
-      }
     }
-  }
 
 /** Like collectEntries but does not recursively walk declared deps (avoids
   * infinite loop).
@@ -1355,8 +1433,11 @@ private val SbtManifestSentinelEnd = "##SCN_MANIFEST_END##"
 //   - mainClass (if uniquely determined by Compile / mainClass)
 //   - sources (relative paths under baseDirectory)
 //   - dependencies (declared libraryDependencies, with cross-suffix applied)
-//   - scalaInstanceJars / compilerBridgeJar (absolute paths to Coursier-cached
-//     files; the CLI converts them to URLs via cache layout introspection)
+//
+// We don't ask sbt for scalaInstance / compiler-bridge paths — the CLI
+// re-resolves both from canonical coords via Coursier, which lets the
+// `collectEntries` walk capture parent POMs / BOM imports / evicted
+// versions needed for offline resolution inside the Nix sandbox.
 private val SbtManifestSbt: String =
   """TaskKey[Unit]("scnManifest") := {
     |  val sv = scalaVersion.value
@@ -1388,9 +1469,6 @@ private val SbtManifestSbt: String =
     |  val mainSources = (Compile / sources).value
     |  val base = baseDirectory.value.toPath
     |  val rel = mainSources.map(f => base.relativize(f.toPath).toString).sorted
-    |  val scalaInst = scalaInstance.value
-    |  val instanceJars = scalaInst.allJars.toSeq.map(_.getAbsolutePath)
-    |  val bridge = (Compile / scalaCompilerBridgeBinaryJar).value
     |  def q(s: String): String =
     |    "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
     |  def arr(items: Seq[String]): String = items.mkString("[", ",", "]")
@@ -1399,17 +1477,13 @@ private val SbtManifestSbt: String =
     |  }
     |  val srcJson = rel.map(q)
     |  val mainJson = mc match { case Some(m) => q(m); case None => "null" }
-    |  val instanceJarsJson = instanceJars.map(q)
-    |  val bridgeJson = bridge match { case Some(f) => q(f.getAbsolutePath); case None => "null" }
     |  val payload =
     |    "{\"scalaVersion\":" + q(sv) +
     |      ",\"scalaBootVersion\":" + q(scalaBootVersion) +
     |      ",\"sbtVersion\":" + q(sbtVer) +
     |      ",\"mainClass\":" + mainJson +
     |      ",\"sources\":" + arr(srcJson) +
-    |      ",\"dependencies\":" + arr(depsJson) +
-    |      ",\"scalaInstanceJars\":" + arr(instanceJarsJson) +
-    |      ",\"compilerBridgeJar\":" + bridgeJson + "}"
+    |      ",\"dependencies\":" + arr(depsJson) + "}"
     |  println("##SCN_MANIFEST_BEGIN##")
     |  println(payload)
     |  println("##SCN_MANIFEST_END##")
@@ -1424,9 +1498,7 @@ case class SbtManifest(
     sbtVersion: String,
     mainClass: Option[String],
     sources: List[String],
-    dependencies: List[SbtManifestDep],
-    scalaInstanceJars: List[String],
-    compilerBridgeJar: Option[String]
+    dependencies: List[SbtManifestDep]
 ) derives Decoder
 
 private def runSbtManifest(projectDir: Path): IO[SbtManifest] = {
@@ -1472,46 +1544,48 @@ private def runSbtManifest(projectDir: Path): IO[SbtManifest] = {
   }
 }
 
-/** Convert a Coursier-cached file path (which encodes the URL) back to its
-  * canonical https:// URL. Errors out if the path isn't inside the local
-  * Coursier cache layout.
+/** Coordinates Coursier should resolve to get the scalaInstance for the given
+  * Scala version. Scala 3's compiler is what sbt uses for compilation; scaladoc
+  * is bundled with it transitively in the Zinc scalaInstance.
   */
-private def urlForFilePath(absPath: String): IO[String] = IO {
-  val p = Path(absPath)
-  val cachePrefix = cachePath.toString + "/"
-  if (!absPath.startsWith(cachePrefix))
-    sys.error(
-      s"Expected Coursier-cached path, got: $absPath (cache at ${cachePath.toString})"
-    )
-  else urlForCachePath(p)
+private def scalaInstanceDeps(scalaVersion: String): List[Dependency] = {
+  val major = scalaVersion.takeWhile(_ != '.')
+  major match {
+    case "3" =>
+      List(
+        Dependency.of("org.scala-lang", "scala3-compiler_3", scalaVersion),
+        Dependency.of("org.scala-lang", "scaladoc_3", scalaVersion)
+      )
+    case "2" =>
+      List(
+        Dependency.of("org.scala-lang", "scala-compiler", scalaVersion)
+      )
+    case other =>
+      sys.error(s"Unsupported Scala major version: $other")
+  }
 }
 
-/** Hash a single (jar) path under the Coursier cache and, if a sibling POM
-  * exists, hash that too. Parent POMs are walked for accurate offline
-  * resolution.
+/** Compiler bridge coordinates. For Scala 3 it's a published binary; for Scala
+  * 2 it's the source jar that sbt compiles on first use.
   */
-private def collectSingleArtifact(
-    jarUrl: String
-)(using HashCache): IO[List[ArtifactEntry]] = {
-  val jarPath = cachePathForUrl(jarUrl)
-  for {
-    jarHash <- sha256Base64(jarPath)
-    pomOpt <- findPomForJar(jarUrl)
-    pomEntries <- pomOpt match {
-      case None          => IO.pure(List.empty[ArtifactEntry])
-      case Some(pomPath) =>
-        val pomUrl = {
-          val direct = jarUrl.replaceFirst("\\.jar$", ".pom")
-          if (cachePathForUrl(direct).toString == pomPath.toString) direct
-          else urlForCachePath(pomPath)
-        }
-        for {
-          pomHash <- sha256Base64(pomPath)
-          repoBase <- repoBaseForPom(pomPath, pomUrl)
-          parents <- collectParentPoms(pomPath, repoBase)
-        } yield ArtifactEntry(pomUrl, pomHash) :: parents
-    }
-  } yield ArtifactEntry(jarUrl, jarHash) :: pomEntries
+private def compilerBridgeDep(
+    scalaVersion: String,
+    sbtVersion: String
+): Dependency = {
+  val major = scalaVersion.takeWhile(_ != '.')
+  major match {
+    case "3" =>
+      Dependency.of("org.scala-lang", "scala3-sbt-bridge", scalaVersion)
+    case "2" =>
+      val binaryVersion = scalaVersion.split('.').take(2).mkString(".")
+      Dependency.of(
+        "org.scala-sbt",
+        s"compiler-bridge_$binaryVersion",
+        sbtVersion
+      )
+    case other =>
+      sys.error(s"Unsupported Scala major version: $other")
+  }
 }
 
 def computeSbtLock(projectDir: Path, manifest: SbtManifest)(using
@@ -1565,15 +1639,23 @@ def computeSbtLock(projectDir: Path, manifest: SbtManifest)(using
       s"sbt boot: ${C.bold}${bootArtifacts.size}${C.reset} artifacts (resolved)"
     )
 
-    // --- scalaInstance JARs (paths reported by sbt) ---
-    _ <- step("Hashing scalaInstance JARs...")
-    scalaInstanceUrls <- manifest.scalaInstanceJars.traverse(urlForFilePath)
-    scalaInstanceEntries <-
-      scalaInstanceUrls.flatTraverse(collectSingleArtifact)
+    // --- scalaInstance: resolved via Coursier from canonical coords ---
+    // We deliberately re-resolve (rather than trust sbt's path list) so the
+    // full transitive set goes through `collectEntries` — that walks parent
+    // POMs + BOM imports + evicted-version POMs, all of which sbt's
+    // lm-coursier may need at update time inside the sandbox.
+    _ <- step("Fetching scalaInstance...")
+    scalaInstanceCoursierDeps = scalaInstanceDeps(manifest.scalaVersion)
+    scalaInstanceArtifacts <- fetchArtifacts(scalaInstanceCoursierDeps*)
+    _ <- info(
+      s"scalaInstance: ${C.bold}${scalaInstanceArtifacts.size}${C.reset} artifacts (transitive)"
+    )
 
     // --- Compiler bridge ---
-    bridgeUrls <- manifest.compilerBridgeJar.toList.traverse(urlForFilePath)
-    bridgeEntries <- bridgeUrls.flatTraverse(collectSingleArtifact)
+    _ <- step("Fetching compiler bridge...")
+    bridgeArtifacts <- fetchArtifacts(
+      compilerBridgeDep(manifest.scalaVersion, manifest.sbtVersion)
+    )
 
     // --- Hash launcher ---
     _ <- step("Hashing sbt launcher...")
@@ -1583,7 +1665,8 @@ def computeSbtLock(projectDir: Path, manifest: SbtManifest)(using
       sha256Base64(path).map(h => ArtifactEntry(artifact.getUrl, h))
     }
 
-    // --- Hash everything else ---
+    // --- Hash everything else (all via collectEntries so parent POMs +
+    // BOM imports + evicted-version POMs come along for offline resolution) ---
     _ <- step("Hashing user deps...")
     userEntries <- collectEntries(userArtifacts)
 
@@ -1596,9 +1679,16 @@ def computeSbtLock(projectDir: Path, manifest: SbtManifest)(using
     }
 
     // Coursier cache contents: full transitive set including parent POMs +
-    // evicted versions, so sbt's own offline Coursier resolution succeeds.
+    // BOMs + evicted versions, so sbt's own offline Coursier resolution
+    // succeeds at update time.
     _ <- step("Hashing sbt boot Coursier cache (full transitive)...")
     bootCacheEntries <- collectEntries(bootArtifacts)
+
+    _ <- step("Hashing scalaInstance (full transitive)...")
+    scalaInstanceEntries <- collectEntries(scalaInstanceArtifacts)
+
+    _ <- step("Hashing compiler bridge (full transitive)...")
+    bridgeEntries <- collectEntries(bridgeArtifacts)
 
     sbtLock = SbtLock(
       sbtVersion = manifest.sbtVersion,
