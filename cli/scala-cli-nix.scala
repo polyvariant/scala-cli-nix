@@ -191,8 +191,8 @@ private def computeSha256(path: Path): IO[String] =
       .chunks
       .evalMap(c => IO(digest.update(c.toByteBuffer)))
       .compile
-      .drain
-      .as(Base64.getEncoder.encodeToString(digest.digest()))
+      .drain >>
+      IO(Base64.getEncoder.encodeToString(digest.digest()))
   }
 
 object HashCache {
