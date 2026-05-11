@@ -298,6 +298,30 @@ let
       mkdir -p $out/${scalaBootVersion}/lib $out/${scalaBootVersion}/org.scala-sbt/sbt/${sbtVersion}
     '' + builtins.concatStringsSep "\n" (libLinkCommands ++ appLinkCommands));
 
+  # Project-independent sbt environment: launcher + boot dir + a Coursier
+  # cache prepopulated with everything sbt needs to bootstrap itself
+  # (boot transitive set incl. evicted POMs, scalaInstance, compiler bridge).
+  # The user's runtime libraryDependencies are layered on top at build time.
+  #
+  # Two projects on the same sbt version + scalaBootVersion + same
+  # scalaInstance/bridge share this exact toolchain via Nix's content-addressed
+  # store. The cache key intentionally excludes anything project-specific
+  # (pname, sources, user runtime deps).
+  mkSbtToolchain = sbtBlock:
+    let
+      key = "${sbtBlock.sbtVersion}-${sbtBlock.scalaBootVersion}";
+      bootDeps =
+        sbtBlock.bootCoursierCache ++
+        sbtBlock.scalaInstance ++
+        sbtBlock.compilerBridge;
+    in {
+      launcherJar = sbtBlock.launcherJar.path;
+      inherit (sbtBlock) sbtVersion scalaBootVersion mainClass;
+      bootDir = mkSbtBootDir "sbt-boot-${key}"
+        sbtBlock.sbtVersion sbtBlock.scalaBootVersion sbtBlock.bootJars;
+      coursierCache = mkCacheDir "sbt-coursier-${key}" bootDeps;
+    };
+
   buildSbtAppImpl = { pname, version, src, sources, fetched, attrOverrides }:
     let
       sbtBlock =
@@ -305,18 +329,13 @@ let
         then builtins.throw "buildSbtApp: lockfile has no `sbt` section. Run `scn lock-sbt` first."
         else fetched.sbt;
 
-      # Coursier cache: bootCoursierCache (full transitive boot set incl. POMs +
-      # evicted versions) + scalaInstance + bridge + user runtime. Some of
-      # these overlap; mkCacheDir's `ln -sf` is idempotent on the same target.
-      allCoursierDeps =
-        sbtBlock.bootCoursierCache ++
-        sbtBlock.scalaInstance ++
-        sbtBlock.compilerBridge ++
-        fetched.targets.jvm.libraryDependencies;
-      coursierCache = mkCacheDir "sbt-coursier-${pname}" allCoursierDeps;
+      toolchain = mkSbtToolchain sbtBlock;
 
-      bootDir = mkSbtBootDir "sbt-boot-${pname}"
-        sbtBlock.sbtVersion sbtBlock.scalaBootVersion sbtBlock.bootJars;
+      # User runtime deps are layered on top of the toolchain's Coursier cache
+      # at build time. Keeping them separate (rather than merged into the
+      # toolchain) preserves the toolchain's shareability across projects.
+      userDepsCache = mkCacheDir "sbt-userdeps-${pname}"
+        fetched.targets.jvm.libraryDependencies;
 
       # Filter src down to what's listed in `sources` + the build.sbt-related
       # files sbt needs. The filtered tree must include build.sbt, project/,
@@ -344,8 +363,8 @@ let
       libraryClasspath = builtins.concatStringsSep ":" (builtins.map (e: e.path) libraryJars);
 
       mainClass =
-        if sbtBlock.mainClass != null
-        then sbtBlock.mainClass
+        if toolchain.mainClass != null
+        then toolchain.mainClass
         else builtins.throw "buildSbtApp: lockfile has no mainClass and explicit override not yet supported; set `Compile / mainClass := Some(\"...\")` in build.sbt and re-lock.";
     in stdenv.mkDerivation (attrOverrides ({
       inherit pname version;
@@ -367,8 +386,11 @@ let
         export COURSIER_CACHE=$SBT_HOME/coursier
         mkdir -p $SBT_BOOT $SBT_SBTBOOT $SBT_IVY $COURSIER_CACHE
 
-        cp -rs --no-preserve=mode ${bootDir}/. $SBT_BOOT/
-        cp -rs --no-preserve=mode ${coursierCache}/. $COURSIER_CACHE/
+        # Project-independent toolchain (shared via Nix store across projects).
+        cp -rs --no-preserve=mode ${toolchain.bootDir}/. $SBT_BOOT/
+        cp -rs --no-preserve=mode ${toolchain.coursierCache}/. $COURSIER_CACHE/
+        # Layer the user's runtime deps on top of the toolchain's Coursier cache.
+        cp -rs --no-preserve=mode ${userDepsCache}/. $COURSIER_CACHE/
 
         export HOME=$TMPDIR/home
         mkdir -p $HOME
@@ -396,7 +418,7 @@ let
         # in batch mode without needing the `-batch` flag (which only the
         # `sbt` shell script understands, not the launcher jar directly).
         java $SBT_LAUNCHER_OPTS \
-          -jar ${sbtBlock.launcherJar.path} \
+          -jar ${toolchain.launcherJar} \
           package < /dev/null
         runHook postBuild
       '';
