@@ -14,14 +14,14 @@ Implemented in `cli/scala-cli-nix.scala` (Scala 3). The CLI is itself built by `
 4. For each JAR, the adjacent POM is found in the Coursier cache. Parent POMs are discovered by walking the `<parent>` chain, parsed with `scala-xml`. SHA-256 hashes are computed in-process via `java.security.MessageDigest` — no `nix hash file` needed. Hashes are cached at `$XDG_CACHE_HOME/scala-cli-nix/hashes.json` (default `~/.cache/scala-cli-nix/hashes.json`), keyed by absolute path with size+mtime as the freshness stamp; the cache is loaded once per `lock`/`init` invocation and persisted on the way out (including on failure). Threaded through the `sha256Base64` call sites as a `using HashCache` parameter — see `class HashCache` and `withHashCache` in `cli/scala-cli-nix.scala`.
 5. The output is `scala.lock.json` with one section per target.
 
-#### Lockfile format (`scala.lock.json`, version 8)
+#### Lockfile format (`scala.lock.json`, version 9)
 
 The lockfile uses a multi-target format. Each target (a platform/Scala version combination) has its own section under the `targets` key.
 
 **Cross-platform example** (1 Scala version, 2 platforms):
 ```json
 {
-  "version": 8,
+  "version": 9,
   "sources": ["hello.scala"],
   "resourceDirs": ["resources"],
   "targets": {
@@ -52,7 +52,7 @@ The lockfile uses a multi-target format. Each target (a platform/Scala version c
 **Single-target example** (standard JVM project):
 ```json
 {
-  "version": 8,
+  "version": 9,
   "sources": ["foo.scala"],
   "resourceDirs": [],
   "targets": {
@@ -93,7 +93,7 @@ Target keys use only the dimensions that vary:
 
 ##### Field reference
 
-- `version` — schema version (8). Checked at build time; mismatch causes a build error directing the user to re-lock.
+- `version` — schema version (9). Checked at build time; mismatch causes a build error directing the user to re-lock.
 - `sources` — top-level, shared across targets. Lists source files relative to the project root.
 - `resourceDirs` — top-level, shared across targets. Resource directories declared via `//> using resourceDir` (or equivalent CLI options), as paths relative to the project root. The build pulls each directory into the filtered source tree as a whole subtree so `scala-cli package` embeds its contents into the JAR (JVM) or the linked binary (Native).
 - `targets.<key>.exportHash` — SHA-1 hex digest of the canonicalized (sorted keys, no spaces) `scala-cli export --json` output for this target, followed by a newline. Used for per-target staleness detection.

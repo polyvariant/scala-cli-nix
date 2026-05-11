@@ -57,11 +57,41 @@ case class TargetLock(
     test: Option[TestLock]
 ) derives Codec.AsObject
 
+/** sbt-specific lock section. Populated by `lock-sbt`; absent otherwise.
+  *
+  * Two artifact groupings:
+  *   - `bootJars`: the 83-ish *resolved-winners* JAR URLs from
+  *     `org.scala-sbt:sbt:<sbtVersion>` resolution. These are the ones the
+  *     launcher places in its flat boot-dir layout — no POMs, no evicted
+  *     versions. Including evicted versions in the boot dir causes `sbt#4955`
+  *     ("unable to detect Scala version").
+  *   - `bootCoursierCache`: the full transitive set (~295 entries: JARs + POMs
+  *     + parent POMs + evicted versions). These go into COURSIER_CACHE so sbt's
+  *     own offline Coursier resolution can find what it needs.
+  *
+  * `scalaInstance` and `compilerBridge` are likewise grouped with their POMs
+  * for offline Coursier resolution. `launcherJar` is the
+  * `org.scala-sbt:sbt-launch:<sbtVersion>` jar we exec directly — using
+  * nixpkgs' bundled launcher fails on any sbt version that doesn't match its
+  * embedded Scala bootstrap version.
+  */
+case class SbtLock(
+    sbtVersion: String,
+    scalaBootVersion: String,
+    mainClass: Option[String],
+    launcherJar: ArtifactEntry,
+    bootJars: List[ArtifactEntry],
+    bootCoursierCache: List[ArtifactEntry],
+    scalaInstance: List[ArtifactEntry],
+    compilerBridge: List[ArtifactEntry]
+) derives Codec.AsObject
+
 case class LockFile(
     version: Int,
     sources: List[String],
     resourceDirs: List[String],
-    targets: Map[String, TargetLock]
+    targets: Map[String, TargetLock],
+    sbt: Option[SbtLock] = None
 ) derives Codec.AsObject
 
 // --- JSON model (scala-cli export, only the fields we use) ---
@@ -849,7 +879,7 @@ def computeLock(inputs: List[String])(using HashCache): IO[String] = {
     }
 
     lockFile = LockFile(
-      version = 8,
+      version = 9,
       sources = sources,
       resourceDirs = resourceDirs,
       targets = targetLocks.toMap
@@ -1319,10 +1349,20 @@ private val SbtManifestSentinelEnd = "##SCN_MANIFEST_END##"
 
 // Injected sbt task. Avoid triple-quoted strings here so it can live inside
 // a Scala 3 raw-triple-quoted string literal on the host side.
+//
+// Emits a JSON manifest with:
+//   - scalaVersion, scalaBootVersion (sbt's own Scala), sbtVersion
+//   - mainClass (if uniquely determined by Compile / mainClass)
+//   - sources (relative paths under baseDirectory)
+//   - dependencies (declared libraryDependencies, with cross-suffix applied)
+//   - scalaInstanceJars / compilerBridgeJar (absolute paths to Coursier-cached
+//     files; the CLI converts them to URLs via cache layout introspection)
 private val SbtManifestSbt: String =
   """TaskKey[Unit]("scnManifest") := {
     |  val sv = scalaVersion.value
     |  val sbv = scalaBinaryVersion.value
+    |  val sbtVer = sbtVersion.value
+    |  val scalaBootVersion = scala.util.Properties.versionNumberString
     |  val mc = (Compile / mainClass).value
     |  val declared = libraryDependencies.value
     |  val deps: Seq[(String, String, String)] = declared.flatMap { m =>
@@ -1348,6 +1388,9 @@ private val SbtManifestSbt: String =
     |  val mainSources = (Compile / sources).value
     |  val base = baseDirectory.value.toPath
     |  val rel = mainSources.map(f => base.relativize(f.toPath).toString).sorted
+    |  val scalaInst = scalaInstance.value
+    |  val instanceJars = scalaInst.allJars.toSeq.map(_.getAbsolutePath)
+    |  val bridge = (Compile / scalaCompilerBridgeBinaryJar).value
     |  def q(s: String): String =
     |    "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
     |  def arr(items: Seq[String]): String = items.mkString("[", ",", "]")
@@ -1356,11 +1399,17 @@ private val SbtManifestSbt: String =
     |  }
     |  val srcJson = rel.map(q)
     |  val mainJson = mc match { case Some(m) => q(m); case None => "null" }
+    |  val instanceJarsJson = instanceJars.map(q)
+    |  val bridgeJson = bridge match { case Some(f) => q(f.getAbsolutePath); case None => "null" }
     |  val payload =
     |    "{\"scalaVersion\":" + q(sv) +
+    |      ",\"scalaBootVersion\":" + q(scalaBootVersion) +
+    |      ",\"sbtVersion\":" + q(sbtVer) +
     |      ",\"mainClass\":" + mainJson +
     |      ",\"sources\":" + arr(srcJson) +
-    |      ",\"dependencies\":" + arr(depsJson) + "}"
+    |      ",\"dependencies\":" + arr(depsJson) +
+    |      ",\"scalaInstanceJars\":" + arr(instanceJarsJson) +
+    |      ",\"compilerBridgeJar\":" + bridgeJson + "}"
     |  println("##SCN_MANIFEST_BEGIN##")
     |  println(payload)
     |  println("##SCN_MANIFEST_END##")
@@ -1371,9 +1420,13 @@ case class SbtManifestDep(groupId: String, artifactId: String, version: String)
     derives Decoder
 case class SbtManifest(
     scalaVersion: String,
+    scalaBootVersion: String,
+    sbtVersion: String,
     mainClass: Option[String],
     sources: List[String],
-    dependencies: List[SbtManifestDep]
+    dependencies: List[SbtManifestDep],
+    scalaInstanceJars: List[String],
+    compilerBridgeJar: Option[String]
 ) derives Decoder
 
 private def runSbtManifest(projectDir: Path): IO[SbtManifest] = {
@@ -1419,11 +1472,57 @@ private def runSbtManifest(projectDir: Path): IO[SbtManifest] = {
   }
 }
 
+/** Convert a Coursier-cached file path (which encodes the URL) back to its
+  * canonical https:// URL. Errors out if the path isn't inside the local
+  * Coursier cache layout.
+  */
+private def urlForFilePath(absPath: String): IO[String] = IO {
+  val p = Path(absPath)
+  val cachePrefix = cachePath.toString + "/"
+  if (!absPath.startsWith(cachePrefix))
+    sys.error(
+      s"Expected Coursier-cached path, got: $absPath (cache at ${cachePath.toString})"
+    )
+  else urlForCachePath(p)
+}
+
+/** Hash a single (jar) path under the Coursier cache and, if a sibling POM
+  * exists, hash that too. Parent POMs are walked for accurate offline
+  * resolution.
+  */
+private def collectSingleArtifact(
+    jarUrl: String
+)(using HashCache): IO[List[ArtifactEntry]] = {
+  val jarPath = cachePathForUrl(jarUrl)
+  for {
+    jarHash <- sha256Base64(jarPath)
+    pomOpt <- findPomForJar(jarUrl)
+    pomEntries <- pomOpt match {
+      case None          => IO.pure(List.empty[ArtifactEntry])
+      case Some(pomPath) =>
+        val pomUrl = {
+          val direct = jarUrl.replaceFirst("\\.jar$", ".pom")
+          if (cachePathForUrl(direct).toString == pomPath.toString) direct
+          else urlForCachePath(pomPath)
+        }
+        for {
+          pomHash <- sha256Base64(pomPath)
+          repoBase <- repoBaseForPom(pomPath, pomUrl)
+          parents <- collectParentPoms(pomPath, repoBase)
+        } yield ArtifactEntry(pomUrl, pomHash) :: parents
+    }
+  } yield ArtifactEntry(jarUrl, jarHash) :: pomEntries
+}
+
 def computeSbtLock(projectDir: Path, manifest: SbtManifest)(using
     HashCache
 ): IO[String] =
   for {
     _ <- info(s"Scala version: ${C.bold}${manifest.scalaVersion}${C.reset}")
+    _ <- info(s"sbt version: ${C.bold}${manifest.sbtVersion}${C.reset}")
+    _ <- info(
+      s"sbt's Scala (boot): ${C.bold}${manifest.scalaBootVersion}${C.reset}"
+    )
     _ <- info(
       s"Main class: ${C.bold}${manifest.mainClass.getOrElse("<unset>")}${C.reset}"
     )
@@ -1431,90 +1530,116 @@ def computeSbtLock(projectDir: Path, manifest: SbtManifest)(using
       s"Found ${C.bold}${manifest.dependencies.size}${C.reset} declared dependencies"
     )
 
-    scalaVersion = manifest.scalaVersion
-    scalaMajor = scalaVersion.takeWhile(_ != '.')
-
-    (compilerArtifact, libraryArtifact) <- IO {
-      scalaMajor match {
-        case "3" =>
-          (
-            Dependency.of("org.scala-lang", "scala3-compiler_3", scalaVersion),
-            Dependency.of("org.scala-lang", "scala3-library_3", scalaVersion)
-          )
-        case "2" =>
-          (
-            Dependency.of("org.scala-lang", "scala-compiler", scalaVersion),
-            Dependency.of("org.scala-lang", "scala-library", scalaVersion)
-          )
-        case other =>
-          sys.error(s"Unsupported Scala major version: $other")
-      }
-    }
-
+    // --- User runtime dependencies (transitive) ---
     userDeps = manifest.dependencies.map(d =>
       Dependency.of(d.groupId, d.artifactId, d.version)
     )
-
-    _ <- step("Fetching compiler dependencies...")
-    compilerArtifacts <- fetchArtifacts(compilerArtifact)
+    _ <- step("Fetching user runtime dependencies...")
+    userArtifacts <- fetchArtifacts(userDeps*)
     _ <- info(
-      s"Compiler: ${C.bold}${compilerArtifacts.size}${C.reset} artifacts"
+      s"User deps: ${C.bold}${userArtifacts.size}${C.reset} artifacts (transitive)"
     )
 
-    _ <- step("Fetching library dependencies...")
-    libArtifacts <- fetchArtifacts((libraryArtifact +: userDeps)*)
+    // --- sbt launcher JAR (org.scala-sbt:sbt-launch:<sbtVersion>) ---
+    // We exec this jar directly with `java -jar`, bypassing pkgs.sbt's
+    // launcher (which is bound to a different Scala bootstrap version and
+    // fails to load older sbt projects offline).
+    _ <- step(s"Fetching sbt launcher (sbt ${manifest.sbtVersion})...")
+    launcherDep = Dependency.of(
+      "org.scala-sbt",
+      "sbt-launch",
+      manifest.sbtVersion
+    )
+    launcherArtifacts <- fetchArtifacts(launcherDep)
+    launcherJarArtifact = launcherArtifacts
+      .find(_._1.getUrl.endsWith("sbt-launch-" + manifest.sbtVersion + ".jar"))
+      .getOrElse(
+        sys.error(s"sbt-launch:${manifest.sbtVersion} did not resolve a jar")
+      )
+
+    // --- sbt boot artifacts (org.scala-sbt:sbt:<sbtVersion>) ---
+    _ <- step(s"Fetching sbt boot artifacts (sbt ${manifest.sbtVersion})...")
+    bootDep = Dependency.of("org.scala-sbt", "sbt", manifest.sbtVersion)
+    bootArtifacts <- fetchArtifacts(bootDep)
     _ <- info(
-      s"Libraries: ${C.bold}${libArtifacts.size}${C.reset} artifacts (transitive)"
+      s"sbt boot: ${C.bold}${bootArtifacts.size}${C.reset} artifacts (resolved)"
     )
 
-    _ <- step("Hashing artifacts...")
-    compilerEntries <- collectEntries(compilerArtifacts)
-    libEntries <- collectEntries(libArtifacts)
+    // --- scalaInstance JARs (paths reported by sbt) ---
+    _ <- step("Hashing scalaInstance JARs...")
+    scalaInstanceUrls <- manifest.scalaInstanceJars.traverse(urlForFilePath)
+    scalaInstanceEntries <-
+      scalaInstanceUrls.flatTraverse(collectSingleArtifact)
 
+    // --- Compiler bridge ---
+    bridgeUrls <- manifest.compilerBridgeJar.toList.traverse(urlForFilePath)
+    bridgeEntries <- bridgeUrls.flatTraverse(collectSingleArtifact)
+
+    // --- Hash launcher ---
+    _ <- step("Hashing sbt launcher...")
+    launcherEntry <- {
+      val (artifact, file) = launcherJarArtifact
+      val path = Path.fromNioPath(file.toPath)
+      sha256Base64(path).map(h => ArtifactEntry(artifact.getUrl, h))
+    }
+
+    // --- Hash everything else ---
+    _ <- step("Hashing user deps...")
+    userEntries <- collectEntries(userArtifacts)
+
+    // Boot dir layout: ONLY the resolved-winner JARs (~83). Including
+    // evicted versions makes sbt-launch fail with #4955.
+    _ <- step("Hashing sbt boot jars (flat layout)...")
+    bootJarEntries <- bootArtifacts.traverse { case (artifact, file) =>
+      val path = Path.fromNioPath(file.toPath)
+      sha256Base64(path).map(h => ArtifactEntry(artifact.getUrl, h))
+    }
+
+    // Coursier cache contents: full transitive set including parent POMs +
+    // evicted versions, so sbt's own offline Coursier resolution succeeds.
+    _ <- step("Hashing sbt boot Coursier cache (full transitive)...")
+    bootCacheEntries <- collectEntries(bootArtifacts)
+
+    sbtLock = SbtLock(
+      sbtVersion = manifest.sbtVersion,
+      scalaBootVersion = manifest.scalaBootVersion,
+      mainClass = manifest.mainClass,
+      launcherJar = launcherEntry,
+      bootJars = bootJarEntries,
+      bootCoursierCache = bootCacheEntries,
+      scalaInstance = scalaInstanceEntries.distinctBy(_.url),
+      compilerBridge = bridgeEntries.distinctBy(_.url)
+    )
+
+    // The `targets` block describes runtime classpath the wrapper uses.
+    // We reuse it with `compiler = Nil` (sbt-in-sandbox handles compilation;
+    // we don't need a separate compiler resolution here) and put user deps
+    // in `libraryDependencies`.
     target = TargetLock(
-      scalaVersion = scalaVersion,
+      scalaVersion = manifest.scalaVersion,
       platform = "JVM",
-      exportHash = sha1Hex(scalaVersion + "|sbt"),
-      compiler = compilerEntries,
-      libraryDependencies = libEntries,
+      exportHash =
+        sha1Hex(s"sbt|${manifest.sbtVersion}|${manifest.scalaVersion}"),
+      compiler = Nil,
+      libraryDependencies = userEntries,
       native = None,
       test = None
     )
 
-    // Include the auto-generated directives file so scala-cli sees the
-    // `using dep` lines at compile time in the Nix sandbox.
-    allSources = ("scn-deps.scala" :: manifest.sources).sorted
     lockFile = LockFile(
-      version = 8,
-      sources = allSources,
+      version = 9,
+      sources = manifest.sources,
       resourceDirs = Nil,
-      targets = Map("jvm" -> target)
+      targets = Map("jvm" -> target),
+      sbt = Some(sbtLock)
     )
   } yield lockfilePrinter.print(lockFile.asJson) + "\n"
-
-/** Materialize the user's declared deps as a `using dep` directive file so
-  * scala-cli (which compiles the sources inside the Nix sandbox) sees them.
-  * This file is tracked alongside the project's sources and overwritten on each
-  * lock-sbt run.
-  */
-private def writeScnDepsFile(
-    cwd: Path,
-    manifest: SbtManifest
-): IO[Unit] = {
-  val lines =
-    "// Auto-generated by scala-cli-nix lock-sbt. Do not edit." ::
-      manifest.dependencies.map(d =>
-        s"//> using dep ${d.groupId}:${d.artifactId}:${d.version}"
-      )
-  writeFile(cwd / "scn-deps.scala", lines.mkString("\n") + "\n")
-}
 
 def lockSbt: IO[ExitCode] = withHashCache {
   for {
     cwd <- Files[IO].currentWorkingDirectory
     _ <- step("Running sbt manifest task...")
     manifest <- runSbtManifest(cwd)
-    _ <- writeScnDepsFile(cwd, manifest)
     content <- computeSbtLock(cwd, manifest)
     lockfilePath = cwd / "scala.lock.json"
     existing <- Files[IO]
