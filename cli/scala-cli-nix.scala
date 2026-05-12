@@ -673,7 +673,7 @@ def collectEntriesNoRecurse(
         }
       }
     }
-    .map(_.distinctBy(_.url))
+    .map(_.distinctBy(_.url).sortBy(_.url))
 
 def collectEntries(
     artifacts: List[(Artifact, File)]
@@ -717,7 +717,7 @@ def collectEntries(
     (entries, pomPaths) <- resolved
     resolvedUrls = entries.map(_.url).toSet
     declaredPoms <- collectDeclaredPoms(pomPaths, resolvedUrls)
-  } yield (entries ++ declaredPoms).distinctBy(_.url)
+  } yield (entries ++ declaredPoms).distinctBy(_.url).sortBy(_.url)
 }
 
 // --- scala-cli helpers ---
