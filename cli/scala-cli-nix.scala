@@ -964,6 +964,22 @@ private def computeTargetLockContent(
       def toDeps(eds: List[ExportDependency]): List[Dependency] =
         eds.map(d => Dependency.of(d.groupId, d.artifactId.fullName, d.version))
 
+      // For Native targets we must resolve scala-cli's injected runtime deps
+      // (scala3lib_native, javalib_native) together with user libs in a single
+      // Coursier resolution. Doing them separately produces a different set
+      // of winners for transitively-shared modules: scala-cli's combined
+      // resolution at build time picks whatever version a *direct* dep
+      // declares (e.g. portable-scala-reflect pinning scalalib_native0.5_2.13
+      // to 2.13.8+0.5.2), while a user-libs-only resolution can travel via an
+      // older scala3lib chain and land on a higher version. The lockfile then
+      // ends up with the wrong JAR and `scala-cli package --offline` fails.
+      val nativeRuntimeDeps: List[Dependency] =
+        export_.nativeOptions
+          .map(opts =>
+            toDeps(opts.compilerPlugins) ++ toDeps(opts.runtimeDependencies)
+          )
+          .getOrElse(Nil)
+
       for {
         _ <- info(s"Scala version: ${C.bold}$scalaVersion${C.reset}")
         _ <- info(s"Platform: ${C.bold}${target.platformLock}${C.reset}")
@@ -980,24 +996,14 @@ private def computeTargetLockContent(
           val parts = dep.split(":")
           Dependency.of(parts(0), parts(1), parts(2))
         }
-        allLibDeps = libraryArtifact +: userDeps
+        allLibDeps = (libraryArtifact +: userDeps) ++ nativeRuntimeDeps
         libArtifacts <- fetchArtifacts(allLibDeps*)
         _ <- info(
           s"Libraries: ${C.bold}${libArtifacts.size}${C.reset} artifacts (transitive)"
         )
 
         nativeLockDeps <- export_.nativeOptions.traverse { opts =>
-          // Compiler plugins + runtime deps resolved together, separately from user libs.
-          // This ensures they stay at scalaNativeVersion and don't get evicted by user deps.
-          val nativeDeps =
-            toDeps(opts.compilerPlugins) ++ toDeps(opts.runtimeDependencies)
-
           for {
-            _ <- step("Fetching native dependencies...")
-            nativeArtifacts <- fetchArtifacts(nativeDeps*)
-            _ <- info(
-              s"Native: ${C.bold}${nativeArtifacts.size}${C.reset} artifacts"
-            )
             _ <- step("Fetching native tooling dependencies...")
             toolingArtifacts <- fetchArtifacts(
               toDeps(opts.toolingDependencies)*
@@ -1005,13 +1011,14 @@ private def computeTargetLockContent(
             _ <- info(
               s"Native tooling: ${C.bold}${toolingArtifacts.size}${C.reset} artifacts"
             )
-            nativeEntries <- collectEntries(nativeArtifacts)
             toolingEntries <- collectEntries(toolingArtifacts)
           } yield NativeLockDeps(
             opts.scalaNativeVersion,
-            nativeEntries,
-            Nil,
-            toolingEntries
+            // compilerPlugins + runtimeDependencies are merged into
+            // libraryDependencies above (combined resolution).
+            compilerPlugins = Nil,
+            runtimeDependencies = Nil,
+            toolingDependencies = toolingEntries
           )
         }
 
@@ -1020,7 +1027,8 @@ private def computeTargetLockContent(
         // transitive set as the test classpath. The JVM test-runner is part of
         // the test scope's `dependencies` (scala-cli's `export --json` injects
         // it for the Test scope on JVM). For Native, `test-interface` is pulled
-        // in transitively by the test framework (e.g. munit-native).
+        // in transitively by the test framework (e.g. munit-native). Native
+        // runtime deps are merged in for the same reason as the main scope.
         testLock <- testScope
           .filter(s =>
             s.sources.nonEmpty || s.dependencies != mainScope.dependencies
@@ -1029,7 +1037,7 @@ private def computeTargetLockContent(
             val testDeps = tScope.dependencies.map(d =>
               Dependency.of(d.groupId, d.artifactId.fullName, d.version)
             )
-            val allTestDeps = libraryArtifact +: testDeps
+            val allTestDeps = (libraryArtifact +: testDeps) ++ nativeRuntimeDeps
             for {
               _ <- step("Fetching test dependencies...")
               testArtifacts <- fetchArtifacts(allTestDeps*)

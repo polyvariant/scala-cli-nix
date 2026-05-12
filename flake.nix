@@ -108,6 +108,7 @@
           example-scala-resources = pkgs.callPackage ./examples/scala-resources/derivation.nix { };
           example-scala3-native-image = pkgs.callPackage ./examples/scala3-native-image/derivation.nix { };
           example-scala3-shadowed-deps = pkgs.callPackage ./examples/scala3-shadowed-deps/derivation.nix { };
+          example-scala3-native-evicted-2_13 = pkgs.callPackage ./examples/scala3-native-evicted-2.13/derivation.nix { };
         in packageTests // {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)
@@ -207,6 +208,25 @@
               touch $out
             else
               echo "FAIL: expected 'hello from graalvm native image!', got '$output'"
+              exit 1
+            fi
+          '';
+          # Regression: scala-java-time transitively pulls
+          # portable-scala-reflect_native0.5_2.13, which pins scalalib_native0.5_2.13
+          # to 2.13.8+0.5.2. scala-cli's combined resolution at build time picks
+          # that pinned version (other paths to scalalib_2.13 are excluded by
+          # the newer scala3lib). If the lock generator resolves user libs
+          # separately from scala-cli's native runtime deps, it lands on a
+          # different scalalib_2.13 winner and `scala-cli package --offline`
+          # can't find the JAR. Running the binary verifies the lock matches
+          # scala-cli's build-time resolution.
+          example-scala3-native-evicted-2_13 = pkgs.runCommand "check-example-scala3-native-evicted-2_13" { } ''
+            output=$(${example-scala3-native-evicted-2_13}/bin/example-scala3-native-evicted-2_13)
+            if [ "$output" = "hello from evicted-2.13!" ]; then
+              echo "OK: example-scala3-native-evicted-2_13 output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello from evicted-2.13!', got '$output'"
               exit 1
             fi
           '';

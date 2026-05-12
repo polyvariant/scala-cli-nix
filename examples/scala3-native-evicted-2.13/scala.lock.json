@@ -2,7 +2,7 @@
   "resourceDirs": [
   ],
   "sources": [
-    "hello.scala"
+    "evicted.scala"
   ],
   "targets": {
     "native": {
@@ -30,22 +30,6 @@
         {
           "sha256": "6Ciqe6koHUp37NomRGDjGHrPetDgnHt7tyVM6W7Uk4g=",
           "url": "https://repo1.maven.org/maven2/com/github/sbt/junit-interface/0.13.3/junit-interface-0.13.3.pom"
-        },
-        {
-          "sha256": "JFouXX/B+MBrN7eqD8F4HUcRDMe07HfcNYPMUF+Z2Cc=",
-          "url": "https://repo1.maven.org/maven2/info/picocli/picocli-codegen/4.7.6/picocli-codegen-4.7.6.jar"
-        },
-        {
-          "sha256": "tefzFndXvWBi9mtYvn8NUOIOLV20VQe5vRMfG8dQo0U=",
-          "url": "https://repo1.maven.org/maven2/info/picocli/picocli-codegen/4.7.6/picocli-codegen-4.7.6.pom"
-        },
-        {
-          "sha256": "7UQRg/MJuT8QTKngceMUpAYqiTGE4Yo8etcuycuhK6A=",
-          "url": "https://repo1.maven.org/maven2/info/picocli/picocli/4.7.6/picocli-4.7.6.jar"
-        },
-        {
-          "sha256": "LSJIzM9IetnOII3sdRdF3xXNHhkkpMw9NoQbXxmQxvs=",
-          "url": "https://repo1.maven.org/maven2/info/picocli/picocli/4.7.6/picocli-4.7.6.pom"
         },
         {
           "sha256": "6I5VMy+6CCa+8tgNKkcdz4COZ/l4+VN8uVy/ExaPUNU=",
@@ -140,48 +124,12 @@
           "url": "https://repo1.maven.org/maven2/org/hamcrest/hamcrest-parent/1.3/hamcrest-parent-1.3.pom"
         },
         {
-          "sha256": "Y2ZG2kBBPnSWOz9LQMnF3PtC89Ds8bk9bd9ciV7/5CI=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-native/3.27.1/jline-native-3.27.1.jar"
+          "sha256": "daw2bo7LaR4Gp+hQQe7Q9nkZpkblJi+gkBIlaYwQQ3U=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-asm/9.9.0-scala-1/scala-asm-9.9.0-scala-1.jar"
         },
         {
-          "sha256": "n/4orsyfVG7JaV8tUh9nRZtLNpFxSMCNFvRVazg9Mo8=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-native/3.27.1/jline-native-3.27.1.pom"
-        },
-        {
-          "sha256": "6WT9B2wgziTdtI3XN6CNYFA0cAXj5u7IL/XrBD1WFYE=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-parent/3.27.1/jline-parent-3.27.1.pom"
-        },
-        {
-          "sha256": "/t2xgKq9Bb+gTgEzefaTjPj5+vHlo0KZF2K4/NMzRXg=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-reader/3.27.1/jline-reader-3.27.1.jar"
-        },
-        {
-          "sha256": "GuNUfW3zBFrpM5y9olcYaCY74bc8dnPRcFelBcrPHwg=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-reader/3.27.1/jline-reader-3.27.1.pom"
-        },
-        {
-          "sha256": "5Lxk8eaOn7JdgFFzOOdqvKHgFFuC44m1wrLH1x0VD4I=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-terminal-jni/3.27.1/jline-terminal-jni-3.27.1.jar"
-        },
-        {
-          "sha256": "UkSN48v1X4BwFITLSiO1jLGw2P6qhtvdwyE2ByQ2l1c=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-terminal-jni/3.27.1/jline-terminal-jni-3.27.1.pom"
-        },
-        {
-          "sha256": "Qre3VlBrypi1BZOEJqNcmQgveBnDM+0lvUEUv7DjtfI=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-terminal/3.27.1/jline-terminal-3.27.1.jar"
-        },
-        {
-          "sha256": "hHjnmqIupq95eWRD+O0w//pdxkfrPS0YYLrC4j800pc=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-terminal/3.27.1/jline-terminal-3.27.1.pom"
-        },
-        {
-          "sha256": "O3ZPUA7ikK1E/wPbksDeKz7ZIKHfUx6rNaeT95t4Y3k=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-asm/9.7.1-scala-1/scala-asm-9.7.1-scala-1.jar"
-        },
-        {
-          "sha256": "PzxgUGxMfvdvdzAlc9/k3QrDZCig7CH4RbxisMW4BJ8=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-asm/9.7.1-scala-1/scala-asm-9.7.1-scala-1.pom"
+          "sha256": "lZttqYZ/vy5oeXatVyBS/uIsHbs9qV/LFiKNBVRN/cE=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-asm/9.9.0-scala-1/scala-asm-9.9.0-scala-1.pom"
         },
         {
           "sha256": "f2AdOm1plDPdr1Sf+hRB3L4AvJX0A1rdl3Z3IFPp+T8=",
@@ -216,16 +164,16 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.12.20/scala-library-2.12.20.pom"
         },
         {
-          "sha256": "jk28O+z3DVnHhxGPatBvq2eQE2oGmc1kErydo9M2lE4=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.15/scala-library-2.13.15.jar"
-        },
-        {
-          "sha256": "+B1vMpF6DpMdqmVZqFAL4cYv+MbILbBx3Nvr9gu9R4Y=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.15/scala-library-2.13.15.pom"
-        },
-        {
           "sha256": "f9R0w0M8U885E1IV00Z+ZqZuo/r5+r5hgzDpuuiykmw=",
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.3/scala-library-2.13.3.pom"
+        },
+        {
+          "sha256": "i1FkxL4teoZjWWa0GaCLOT5Ys8e8DK+1AuDzQkhyK04=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/3.8.3/scala-library-3.8.3.jar"
+        },
+        {
+          "sha256": "TJMm6I8E0mM8xBSSNaXsPSRPwBO/nh09g0rjSj1xl60=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/3.8.3/scala-library-3.8.3.pom"
         },
         {
           "sha256": "AAyBQrKPugeesePFa3WH1ztI+LI/siEj2EA8qEv619s=",
@@ -244,44 +192,44 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.1/scala-reflect-2.13.1.pom"
         },
         {
-          "sha256": "0KOJhIAduX/T1Bw4GmgH1qq/UXd13g2Q476gY25pri4=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-compiler_3/3.6.4/scala3-compiler_3-3.6.4.jar"
+          "sha256": "zV5apUthDjdSLe6hk0Sp2WFNX7yc8FLeCKZs63waiXQ=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-compiler_3/3.8.3/scala3-compiler_3-3.8.3.jar"
         },
         {
-          "sha256": "YrN2+tN+FErSFY5XwLM8d8OhTjQGhGQHnTSZQLCuP/Y=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-compiler_3/3.6.4/scala3-compiler_3-3.6.4.pom"
+          "sha256": "22p4pPmoPe3uw859F9SptQvM/6dDv8cnmg7gwwY2Ops=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-compiler_3/3.8.3/scala3-compiler_3-3.8.3.pom"
         },
         {
-          "sha256": "0YZ44duwgM85Zmxik3Gg1t+TF3mC0DBgdSii0tpw4DQ=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-interfaces/3.6.4/scala3-interfaces-3.6.4.jar"
+          "sha256": "mLtDOVrTO2W36lntNwX8FBdLYXn00h1WGulu+XvlY8A=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-interfaces/3.8.3/scala3-interfaces-3.8.3.jar"
         },
         {
-          "sha256": "Eztau5xXEB8PmFR5RU/yv4zbHDkw45A+GRCq79NOpXE=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-interfaces/3.6.4/scala3-interfaces-3.6.4.pom"
+          "sha256": "vH1YyN1g7wUahFOU25RH4nGU15LhOSMAAFjwUxSNyKM=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-interfaces/3.8.3/scala3-interfaces-3.8.3.pom"
         },
         {
-          "sha256": "qMliUmkIMx4Hf3DzkadJPgzb/RTtuowaeA2u5QHKBuY=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.6.4/scala3-library_3-3.6.4.jar"
+          "sha256": "dAx59/w9rixe70joX3d9Z5ofD1P9u3gL+E3qA3AiCmE=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.3/scala3-library_3-3.8.3.jar"
         },
         {
-          "sha256": "bjzMz29ay/18+obAw+yMIDozQwyiYonAbow01N8opIg=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.6.4/scala3-library_3-3.6.4.pom"
+          "sha256": "p4aGYvy+PeR5QJeZ7sY+QzxSEUuAU79WuOeYSIJvTp8=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.3/scala3-library_3-3.8.3.pom"
         },
         {
-          "sha256": "aAGvCp3Cl0dOe4zoHyyqa4tXpU54PSkKhyj6GdNPEdo=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/tasty-core_3/3.6.4/tasty-core_3-3.6.4.jar"
+          "sha256": "HHcfJBa05FWyaZgaF8CASyN+7RIMiAevgI8ZIIXD5RY=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/tasty-core_3/3.8.3/tasty-core_3-3.8.3.jar"
         },
         {
-          "sha256": "5RJGfvmsvNyWYx9vWDLI1K+ibC8fmIlBf55O37oJ/oU=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/tasty-core_3/3.6.4/tasty-core_3-3.6.4.pom"
+          "sha256": "fADIauHkvJGk6hQHbB/7qOruG9NP2ZaY+ZoEe1ntrws=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/tasty-core_3/3.8.3/tasty-core_3-3.8.3.pom"
         },
         {
-          "sha256": "wzrICDUCdUQoATwVlo2e1UUMHbFmlHFTQExlB69Rcv8=",
-          "url": "https://repo1.maven.org/maven2/org/scala-sbt/compiler-interface/1.10.4/compiler-interface-1.10.4.jar"
+          "sha256": "K6zFdh4DkgoijlydILM9nFHUOq8vUuj4OezmMJZuuIA=",
+          "url": "https://repo1.maven.org/maven2/org/scala-sbt/compiler-interface/1.10.7/compiler-interface-1.10.7.jar"
         },
         {
-          "sha256": "fHnczWLZLrVy8/HD8Ms05HvrwJ61HWA6thscnYvkSBE=",
-          "url": "https://repo1.maven.org/maven2/org/scala-sbt/compiler-interface/1.10.4/compiler-interface-1.10.4.pom"
+          "sha256": "O3sNqL9YIKpQ9ESOGQId4RgxZPdKGAvQto59kvMATjE=",
+          "url": "https://repo1.maven.org/maven2/org/scala-sbt/compiler-interface/1.10.7/compiler-interface-1.10.7.pom"
         },
         {
           "sha256": "FfcLOLuV8wAv7JrqVAMPGbtOz7rWTGdCS15f6gnNdJ4=",
@@ -292,12 +240,12 @@
           "url": "https://repo1.maven.org/maven2/org/scala-sbt/test-interface/1.0/test-interface-1.0.pom"
         },
         {
-          "sha256": "uWEAPB7TyFznwHV3dopomtZXxz8jTWIO6tPrQshUpDQ=",
-          "url": "https://repo1.maven.org/maven2/org/scala-sbt/util-interface/1.10.4/util-interface-1.10.4.jar"
+          "sha256": "HWuR76QrcPwGTK7W1iliN04Tsnc3+IWofITGZ7ML5iU=",
+          "url": "https://repo1.maven.org/maven2/org/scala-sbt/util-interface/1.10.7/util-interface-1.10.7.jar"
         },
         {
-          "sha256": "+igaVKFk+M+iT7b+vtjIUCxPI2IKa1CXO/EIsMaqnbs=",
-          "url": "https://repo1.maven.org/maven2/org/scala-sbt/util-interface/1.10.4/util-interface-1.10.4.pom"
+          "sha256": "1JRwyBXgcORPlQERbIPzWxeUE/Wq/pXimsKTxnzBYpc=",
+          "url": "https://repo1.maven.org/maven2/org/scala-sbt/util-interface/1.10.7/util-interface-1.10.7.pom"
         },
         {
           "sha256": "pQoySCCLJel5fER3Cf5CdgJlEL6uAegjZvQFpm2ajVc=",
@@ -428,7 +376,7 @@
           "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.12/3.2.19/scalatest_2.12-3.2.19.pom"
         }
       ],
-      "exportHash": "0332ed4528cba7e0d76afafa39651122bc683658",
+      "exportHash": "79df4f8730e81aad170a830ed3c6431b9c0e19dd",
       "libraryDependencies": [
         {
           "sha256": "FWneZDfXHoeIBzAvjhsGoGti0hfNSjDoAZyVQ9ZoPf8=",
@@ -453,22 +401,6 @@
         {
           "sha256": "6Ciqe6koHUp37NomRGDjGHrPetDgnHt7tyVM6W7Uk4g=",
           "url": "https://repo1.maven.org/maven2/com/github/sbt/junit-interface/0.13.3/junit-interface-0.13.3.pom"
-        },
-        {
-          "sha256": "JFouXX/B+MBrN7eqD8F4HUcRDMe07HfcNYPMUF+Z2Cc=",
-          "url": "https://repo1.maven.org/maven2/info/picocli/picocli-codegen/4.7.6/picocli-codegen-4.7.6.jar"
-        },
-        {
-          "sha256": "tefzFndXvWBi9mtYvn8NUOIOLV20VQe5vRMfG8dQo0U=",
-          "url": "https://repo1.maven.org/maven2/info/picocli/picocli-codegen/4.7.6/picocli-codegen-4.7.6.pom"
-        },
-        {
-          "sha256": "7UQRg/MJuT8QTKngceMUpAYqiTGE4Yo8etcuycuhK6A=",
-          "url": "https://repo1.maven.org/maven2/info/picocli/picocli/4.7.6/picocli-4.7.6.jar"
-        },
-        {
-          "sha256": "LSJIzM9IetnOII3sdRdF3xXNHhkkpMw9NoQbXxmQxvs=",
-          "url": "https://repo1.maven.org/maven2/info/picocli/picocli/4.7.6/picocli-4.7.6.pom"
         },
         {
           "sha256": "6I5VMy+6CCa+8tgNKkcdz4COZ/l4+VN8uVy/ExaPUNU=",
@@ -587,42 +519,6 @@
           "url": "https://repo1.maven.org/maven2/org/hamcrest/hamcrest-parent/1.3/hamcrest-parent-1.3.pom"
         },
         {
-          "sha256": "Y2ZG2kBBPnSWOz9LQMnF3PtC89Ds8bk9bd9ciV7/5CI=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-native/3.27.1/jline-native-3.27.1.jar"
-        },
-        {
-          "sha256": "n/4orsyfVG7JaV8tUh9nRZtLNpFxSMCNFvRVazg9Mo8=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-native/3.27.1/jline-native-3.27.1.pom"
-        },
-        {
-          "sha256": "6WT9B2wgziTdtI3XN6CNYFA0cAXj5u7IL/XrBD1WFYE=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-parent/3.27.1/jline-parent-3.27.1.pom"
-        },
-        {
-          "sha256": "/t2xgKq9Bb+gTgEzefaTjPj5+vHlo0KZF2K4/NMzRXg=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-reader/3.27.1/jline-reader-3.27.1.jar"
-        },
-        {
-          "sha256": "GuNUfW3zBFrpM5y9olcYaCY74bc8dnPRcFelBcrPHwg=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-reader/3.27.1/jline-reader-3.27.1.pom"
-        },
-        {
-          "sha256": "5Lxk8eaOn7JdgFFzOOdqvKHgFFuC44m1wrLH1x0VD4I=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-terminal-jni/3.27.1/jline-terminal-jni-3.27.1.jar"
-        },
-        {
-          "sha256": "UkSN48v1X4BwFITLSiO1jLGw2P6qhtvdwyE2ByQ2l1c=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-terminal-jni/3.27.1/jline-terminal-jni-3.27.1.pom"
-        },
-        {
-          "sha256": "Qre3VlBrypi1BZOEJqNcmQgveBnDM+0lvUEUv7DjtfI=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-terminal/3.27.1/jline-terminal-3.27.1.jar"
-        },
-        {
-          "sha256": "hHjnmqIupq95eWRD+O0w//pdxkfrPS0YYLrC4j800pc=",
-          "url": "https://repo1.maven.org/maven2/org/jline/jline-terminal/3.27.1/jline-terminal-3.27.1.pom"
-        },
-        {
           "sha256": "LY0FrJMgWeTLW7d8a6GWZgw/7eMjRnhzYo1VtUWhSzM=",
           "url": "https://repo1.maven.org/maven2/org/portable-scala/portable-scala-reflect_native0.5_2.13/1.1.3/portable-scala-reflect_native0.5_2.13-1.1.3.jar"
         },
@@ -631,12 +527,12 @@
           "url": "https://repo1.maven.org/maven2/org/portable-scala/portable-scala-reflect_native0.5_2.13/1.1.3/portable-scala-reflect_native0.5_2.13-1.1.3.pom"
         },
         {
-          "sha256": "O3ZPUA7ikK1E/wPbksDeKz7ZIKHfUx6rNaeT95t4Y3k=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-asm/9.7.1-scala-1/scala-asm-9.7.1-scala-1.jar"
+          "sha256": "daw2bo7LaR4Gp+hQQe7Q9nkZpkblJi+gkBIlaYwQQ3U=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-asm/9.9.0-scala-1/scala-asm-9.9.0-scala-1.jar"
         },
         {
-          "sha256": "PzxgUGxMfvdvdzAlc9/k3QrDZCig7CH4RbxisMW4BJ8=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-asm/9.7.1-scala-1/scala-asm-9.7.1-scala-1.pom"
+          "sha256": "lZttqYZ/vy5oeXatVyBS/uIsHbs9qV/LFiKNBVRN/cE=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-asm/9.9.0-scala-1/scala-asm-9.9.0-scala-1.pom"
         },
         {
           "sha256": "f2AdOm1plDPdr1Sf+hRB3L4AvJX0A1rdl3Z3IFPp+T8=",
@@ -671,10 +567,6 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.12.20/scala-library-2.12.20.pom"
         },
         {
-          "sha256": "yWhv2Lp8YvCSjwnQsQWq3IK9qwYkFCS6JmDihdxVlUY=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.10/scala-library-2.13.10.pom"
-        },
-        {
           "sha256": "CDMIeGMmqohH5rRIHGCdbGFvbiBqorRxOlG5sjjtRlo=",
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.12/scala-library-2.13.12.pom"
         },
@@ -687,22 +579,6 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.14/scala-library-2.13.14.pom"
         },
         {
-          "sha256": "+B1vMpF6DpMdqmVZqFAL4cYv+MbILbBx3Nvr9gu9R4Y=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.15/scala-library-2.13.15.pom"
-        },
-        {
-          "sha256": "sltyupbrMJNIaNhtMHKY0k06wVTTYuek7rN7pRuoaFM=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.16/scala-library-2.13.16.pom"
-        },
-        {
-          "sha256": "ToXZb/e8fcYnmFUjw1QbmReqoI6VY5E4DELbIaLE5aA=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.jar"
-        },
-        {
-          "sha256": "w/sRghThI5mFf0rqowM6uLBvbtvuyb/ky18BAcA0wh0=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.pom"
-        },
-        {
           "sha256": "f9R0w0M8U885E1IV00Z+ZqZuo/r5+r5hgzDpuuiykmw=",
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.3/scala-library-2.13.3.pom"
         },
@@ -711,8 +587,12 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.8/scala-library-2.13.8.pom"
         },
         {
-          "sha256": "yAlfWGnFNY+xdxhIZqd1nCB7529KOKFSP5WrUuiw5s4=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.9/scala-library-2.13.9.pom"
+          "sha256": "i1FkxL4teoZjWWa0GaCLOT5Ys8e8DK+1AuDzQkhyK04=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/3.8.3/scala-library-3.8.3.jar"
+        },
+        {
+          "sha256": "TJMm6I8E0mM8xBSSNaXsPSRPwBO/nh09g0rjSj1xl60=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/3.8.3/scala-library-3.8.3.pom"
         },
         {
           "sha256": "AAyBQrKPugeesePFa3WH1ztI+LI/siEj2EA8qEv619s=",
@@ -739,76 +619,44 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.14/scala-reflect-2.13.14.pom"
         },
         {
-          "sha256": "I7rUiiNGW0yR4f62dzymNhrC4AUwILPjEcJaKvHUdsY=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.9/scala-reflect-2.13.9.jar"
+          "sha256": "zV5apUthDjdSLe6hk0Sp2WFNX7yc8FLeCKZs63waiXQ=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-compiler_3/3.8.3/scala3-compiler_3-3.8.3.jar"
         },
         {
-          "sha256": "4o2OP9nPS0t9ELrtqZVD20FL/bxNUfJp+j7WdNWotvQ=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.9/scala-reflect-2.13.9.pom"
+          "sha256": "22p4pPmoPe3uw859F9SptQvM/6dDv8cnmg7gwwY2Ops=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-compiler_3/3.8.3/scala3-compiler_3-3.8.3.pom"
         },
         {
-          "sha256": "0KOJhIAduX/T1Bw4GmgH1qq/UXd13g2Q476gY25pri4=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-compiler_3/3.6.4/scala3-compiler_3-3.6.4.jar"
+          "sha256": "mLtDOVrTO2W36lntNwX8FBdLYXn00h1WGulu+XvlY8A=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-interfaces/3.8.3/scala3-interfaces-3.8.3.jar"
         },
         {
-          "sha256": "YrN2+tN+FErSFY5XwLM8d8OhTjQGhGQHnTSZQLCuP/Y=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-compiler_3/3.6.4/scala3-compiler_3-3.6.4.pom"
-        },
-        {
-          "sha256": "0YZ44duwgM85Zmxik3Gg1t+TF3mC0DBgdSii0tpw4DQ=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-interfaces/3.6.4/scala3-interfaces-3.6.4.jar"
-        },
-        {
-          "sha256": "Eztau5xXEB8PmFR5RU/yv4zbHDkw45A+GRCq79NOpXE=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-interfaces/3.6.4/scala3-interfaces-3.6.4.pom"
+          "sha256": "vH1YyN1g7wUahFOU25RH4nGU15LhOSMAAFjwUxSNyKM=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-interfaces/3.8.3/scala3-interfaces-3.8.3.pom"
         },
         {
           "sha256": "1h4DWZTmeHKdnvHc/lOL/h5KlOZl29lhoPoydBGi9NM=",
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.1.3/scala3-library_3-3.1.3.pom"
         },
         {
-          "sha256": "Avz304vML4UFJj64IvEwZHy/FMaMTfzSubM7ed9GUOQ=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.3.1/scala3-library_3-3.3.1.pom"
-        },
-        {
           "sha256": "0nweLNpEgUvx9iv+asdv0uIaZ/wzBbioAmuem1uA6m4=",
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.3.3/scala3-library_3-3.3.3.pom"
         },
         {
-          "sha256": "RVd6FeDwuYRYaK3StQr62W0chvXyFur1PC8sfQGtSQI=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.3.4/scala3-library_3-3.3.4.pom"
+          "sha256": "dAx59/w9rixe70joX3d9Z5ofD1P9u3gL+E3qA3AiCmE=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.3/scala3-library_3-3.8.3.jar"
         },
         {
-          "sha256": "u3m1mG17qcGxVe//e9jPgu/gsu0rEn1PIgy2tQu+naU=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.3.6/scala3-library_3-3.3.6.pom"
+          "sha256": "p4aGYvy+PeR5QJeZ7sY+QzxSEUuAU79WuOeYSIJvTp8=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.3/scala3-library_3-3.8.3.pom"
         },
         {
-          "sha256": "mSu1QU9YVdp4hBNOtRjV9wDihJ6PPE1RZOXEIV66IVE=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.3.7/scala3-library_3-3.3.7.pom"
+          "sha256": "HHcfJBa05FWyaZgaF8CASyN+7RIMiAevgI8ZIIXD5RY=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/tasty-core_3/3.8.3/tasty-core_3-3.8.3.jar"
         },
         {
-          "sha256": "qMliUmkIMx4Hf3DzkadJPgzb/RTtuowaeA2u5QHKBuY=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.6.4/scala3-library_3-3.6.4.jar"
-        },
-        {
-          "sha256": "bjzMz29ay/18+obAw+yMIDozQwyiYonAbow01N8opIg=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.6.4/scala3-library_3-3.6.4.pom"
-        },
-        {
-          "sha256": "aAGvCp3Cl0dOe4zoHyyqa4tXpU54PSkKhyj6GdNPEdo=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/tasty-core_3/3.6.4/tasty-core_3-3.6.4.jar"
-        },
-        {
-          "sha256": "5RJGfvmsvNyWYx9vWDLI1K+ibC8fmIlBf55O37oJ/oU=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/tasty-core_3/3.6.4/tasty-core_3-3.6.4.pom"
-        },
-        {
-          "sha256": "rTBJ/fLIYTqgZNC+Dw04guMn1euIMAFMbVkSrmBdxhA=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/auxlib_native0.5_2.13/0.5.10/auxlib_native0.5_2.13-0.5.10.jar"
-        },
-        {
-          "sha256": "mIhvBbULaXvTdWJb6Vi0ZTxg/mvvVUj4Um5TTjyIz+Y=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/auxlib_native0.5_2.13/0.5.10/auxlib_native0.5_2.13-0.5.10.pom"
+          "sha256": "fADIauHkvJGk6hQHbB/7qOruG9NP2ZaY+ZoEe1ntrws=",
+          "url": "https://repo1.maven.org/maven2/org/scala-lang/tasty-core_3/3.8.3/tasty-core_3-3.8.3.pom"
         },
         {
           "sha256": "ffeuwpNka+ybDeAAsuLE3a5HKZ6d0uYeIyVC6P94rok=",
@@ -839,26 +687,6 @@
           "url": "https://repo1.maven.org/maven2/org/scala-native/auxlib_native0.5_3/0.5.3/auxlib_native0.5_3-0.5.3.pom"
         },
         {
-          "sha256": "FoRtfDSKuA6CErEu+JL+4FwBkqbi09AR8/KSnXR8QE4=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/auxlib_native0.5_3/0.5.5/auxlib_native0.5_3-0.5.5.pom"
-        },
-        {
-          "sha256": "Vyzg+OvEyzsXDCqyZDY0g2M4wRqbol6LDkObrL+71EU=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/auxlib_native0.5_3/0.5.6/auxlib_native0.5_3-0.5.6.pom"
-        },
-        {
-          "sha256": "rW/Yld3yGdD7Ky1p6TORtzveurtt7JYhR+EZfmVGGYA=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/auxlib_native0.5_3/0.5.8/auxlib_native0.5_3-0.5.8.pom"
-        },
-        {
-          "sha256": "cQePF5MzjBddZmJIb7ZeDiZq0TGCFRs1Dc2uCafG7lU=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/clib_native0.5_2.13/0.5.10/clib_native0.5_2.13-0.5.10.jar"
-        },
-        {
-          "sha256": "X3GPPzxGbHFcRhMsrn0O7dFgTbQS94fxPRDEW8nzrPc=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/clib_native0.5_2.13/0.5.10/clib_native0.5_2.13-0.5.10.pom"
-        },
-        {
           "sha256": "Ln2Pmz5Zk1aQdrlZHz+fd+u+QyXwbAZ6mDC+VjZKyhI=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/clib_native0.5_2.13/0.5.2/clib_native0.5_2.13-0.5.2.jar"
         },
@@ -885,18 +713,6 @@
         {
           "sha256": "x78K+t9O4mhNO7hlZ0xZS+HNSxjrGOyW5JVBbYIU/HY=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/clib_native0.5_3/0.5.3/clib_native0.5_3-0.5.3.pom"
-        },
-        {
-          "sha256": "quAqG+7VCECqZbgL/yRMONV8msqgtysGoldx/ddoc3w=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/clib_native0.5_3/0.5.5/clib_native0.5_3-0.5.5.pom"
-        },
-        {
-          "sha256": "L9URsCjzQeVY+uncngWxmYqUQacAAYge9xs+DT5O5B8=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/clib_native0.5_3/0.5.6/clib_native0.5_3-0.5.6.pom"
-        },
-        {
-          "sha256": "MFS2kzi9qJaJS6Nlk6ri3PzR9JKwPu3dqhsKzPyVL/E=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/clib_native0.5_3/0.5.8/clib_native0.5_3-0.5.8.pom"
         },
         {
           "sha256": "nq8ewDRZma2Jq+dX/Y83u84VLXvJE/Tj2YaIQjfOZA4=",
@@ -935,18 +751,6 @@
           "url": "https://repo1.maven.org/maven2/org/scala-native/javalib_native0.5_3/0.5.3/javalib_native0.5_3-0.5.3.pom"
         },
         {
-          "sha256": "O9YWj8pePR0lSpRFNCUGUI4cQPc9oaCOay8KMXjieo8=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/javalib_native0.5_3/0.5.5/javalib_native0.5_3-0.5.5.pom"
-        },
-        {
-          "sha256": "XlLFQ8dAY5NrOkdJgMp6Y+CytY9uWTMIBe4nmeh5wOI=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/javalib_native0.5_3/0.5.6/javalib_native0.5_3-0.5.6.pom"
-        },
-        {
-          "sha256": "VOABuQDsiWMAcJcMpdyhQiwtdIFN24NxtJjFqtEN1m4=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/javalib_native0.5_3/0.5.8/javalib_native0.5_3-0.5.8.pom"
-        },
-        {
           "sha256": "xFJtURoIpJB8RmcsVeonCXvVk7B4UtRJOUSZaXzH5TQ=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/junit-runtime_native0.5_2.13/0.5.2/junit-runtime_native0.5_2.13-0.5.2.jar"
         },
@@ -979,30 +783,6 @@
           "url": "https://repo1.maven.org/maven2/org/scala-native/junit-runtime_native0.5_3/0.5.3/junit-runtime_native0.5_3-0.5.3.pom"
         },
         {
-          "sha256": "/YlH3gXFxqbR/9PHTWK2wJlBhNqUjs0SV0XLUWTuHPk=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/junit-runtime_native0.5_3/0.5.5/junit-runtime_native0.5_3-0.5.5.jar"
-        },
-        {
-          "sha256": "IHzP27nSfFARCtT1KNBUtmpIq9Rr5kQpMXBlwDbCH+I=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/junit-runtime_native0.5_3/0.5.5/junit-runtime_native0.5_3-0.5.5.pom"
-        },
-        {
-          "sha256": "HpxZbEXw3S4QfoGMsXQnW1laKaNaFzbU7JCiOw5DtH0=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/junit-runtime_native0.5_3/0.5.6/junit-runtime_native0.5_3-0.5.6.jar"
-        },
-        {
-          "sha256": "/wwioSrnEfdVP76ejWofnVXtZxQr7GCEszkTPUT31ig=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/junit-runtime_native0.5_3/0.5.6/junit-runtime_native0.5_3-0.5.6.pom"
-        },
-        {
-          "sha256": "3itDo8PhVVYrZFD/AIElxHzbO6h78oB+Q8lOgksljGY=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/nativelib_native0.5_2.13/0.5.10/nativelib_native0.5_2.13-0.5.10.jar"
-        },
-        {
-          "sha256": "0EBIzCJEon7dnn6gk6f/7AKvLi3DsOIHnC4ImP2vFXs=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/nativelib_native0.5_2.13/0.5.10/nativelib_native0.5_2.13-0.5.10.pom"
-        },
-        {
           "sha256": "2+7Yvq/ouhc/9KWP5aDNlqjzfQSuz7aqNoUy+AZfa8E=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/nativelib_native0.5_2.13/0.5.2/nativelib_native0.5_2.13-0.5.2.jar"
         },
@@ -1031,24 +811,12 @@
           "url": "https://repo1.maven.org/maven2/org/scala-native/nativelib_native0.5_3/0.5.3/nativelib_native0.5_3-0.5.3.pom"
         },
         {
-          "sha256": "TTG/9ZhUJtx29ZI94jVXcNx6WgUNjaAbM2vABUkHubs=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/nativelib_native0.5_3/0.5.5/nativelib_native0.5_3-0.5.5.pom"
+          "sha256": "FuOnY4qHwc7hcONKCQNQ48g+11ExrTLUI9sqMd5zi8Y=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/nscplugin_3.8.3/0.5.10/nscplugin_3.8.3-0.5.10.jar"
         },
         {
-          "sha256": "j9Y5uufIp9NcM3r7Peta0Ao0VS887vn782A+njEDbZ4=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/nativelib_native0.5_3/0.5.6/nativelib_native0.5_3-0.5.6.pom"
-        },
-        {
-          "sha256": "p6D79Dv5Rqt2BKWuDOBzDEm08XtV+53rpJ1sAUX9twY=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/nativelib_native0.5_3/0.5.8/nativelib_native0.5_3-0.5.8.pom"
-        },
-        {
-          "sha256": "R1bVLCDaRGT6wjAB1Ee5kOrqUfZ4ULbH9jv+FG47qgY=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/nscplugin_3.6.4/0.5.10/nscplugin_3.6.4-0.5.10.jar"
-        },
-        {
-          "sha256": "z5m3jJMI3nv9VkhCFfp91Drs8zDZr8A+u7X8e+WR+n0=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/nscplugin_3.6.4/0.5.10/nscplugin_3.6.4-0.5.10.pom"
+          "sha256": "cYbPLuKwaNKCI1A6oUwxs58DifYoX7av8xJxnbBiy/A=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/nscplugin_3.8.3/0.5.10/nscplugin_3.8.3-0.5.10.pom"
         },
         {
           "sha256": "jlUNMd67p3/gKN7CyhQD0kj0Q0ZNAL48KT461Yo8UUo=",
@@ -1079,24 +847,8 @@
           "url": "https://repo1.maven.org/maven2/org/scala-native/posixlib_native0.5_3/0.5.3/posixlib_native0.5_3-0.5.3.pom"
         },
         {
-          "sha256": "Vw/fpS0ajUnpyA8eSxsqfjC38YvuLJ0vethv26nAgUk=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/posixlib_native0.5_3/0.5.5/posixlib_native0.5_3-0.5.5.pom"
-        },
-        {
-          "sha256": "oLsn4Ylg77cT4psHQjjBWO+r//4uez4mLW+Iv69rmeo=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/posixlib_native0.5_3/0.5.6/posixlib_native0.5_3-0.5.6.pom"
-        },
-        {
-          "sha256": "HifGW4FYYmtPhdpj/ciC1uePg/yvPkeg3j9O8ES9xhw=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/posixlib_native0.5_3/0.5.8/posixlib_native0.5_3-0.5.8.pom"
-        },
-        {
           "sha256": "sRMWuGEvU+5AkhhlnveYeCzK5dVwYQcry2DuQ2++k64=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.1.3+0.5.1/scala3lib_native0.5_3-3.1.3+0.5.1.pom"
-        },
-        {
-          "sha256": "8LFg+wuBGBxXrn62mey4G2F/BPeHnfm4rox1BnhhE6w=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.1.3+0.5.10/scala3lib_native0.5_3-3.1.3+0.5.10.pom"
         },
         {
           "sha256": "tZVUAFrLrh1J+H+xha2fUjeqMz7rdzIwZjY/wGUZbdQ=",
@@ -1105,14 +857,6 @@
         {
           "sha256": "2iNJnDIbUWHqARURykw6LFi5qNJP4uqJJpqDbOi2vv4=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.1.3+0.5.3/scala3lib_native0.5_3-3.1.3+0.5.3.pom"
-        },
-        {
-          "sha256": "QQ1rfut0/WsZKDzcPdtDamSMKnkKfD4rSsi3yt9p+rs=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.1.3+0.5.6/scala3lib_native0.5_3-3.1.3+0.5.6.pom"
-        },
-        {
-          "sha256": "Flv4T7dmCVwE7P+HxIc+uBsIbSuYfveohqwHaWmc9XA=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.1.3+0.5.8/scala3lib_native0.5_3-3.1.3+0.5.8.pom"
         },
         {
           "sha256": "nXKJJdV0tri2J7PRhIYVFneqgBT2dJ3yq8S5uSlHw/A=",
@@ -1127,28 +871,12 @@
           "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.3.3+0.5.3/scala3lib_native0.5_3-3.3.3+0.5.3.pom"
         },
         {
-          "sha256": "rNLbV6iBwC7o2UURE2BmItE+mdDlwQ4V5U/IMctFvMw=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.3.3+0.5.5/scala3lib_native0.5_3-3.3.3+0.5.5.pom"
+          "sha256": "xwBq/QOXF7ymWqzZgDnQnQtIBHUPvuW9wNu/QUr8Mdg=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.8.3+0.5.10/scala3lib_native0.5_3-3.8.3+0.5.10.jar"
         },
         {
-          "sha256": "8oasmQrHilBB2xJ3TDaLoBXo6lN3dne9QlSzP+wOUfs=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.3.4+0.5.6/scala3lib_native0.5_3-3.3.4+0.5.6.pom"
-        },
-        {
-          "sha256": "K1CW9TsvbIjUM1uA3hwqM0QvlZ2kpy6QE+t6uQv54/c=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.3.6+0.5.8/scala3lib_native0.5_3-3.3.6+0.5.8.pom"
-        },
-        {
-          "sha256": "jxLYNebPUr6+t8tITdVe8xrySr1pzY22YtkG196290I=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.3.7+0.5.10/scala3lib_native0.5_3-3.3.7+0.5.10.pom"
-        },
-        {
-          "sha256": "pEoPWO3KnlhQ6UTh3fErzlMpfcvDIn1e3n6U608FBoQ=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.6.4+0.5.10/scala3lib_native0.5_3-3.6.4+0.5.10.jar"
-        },
-        {
-          "sha256": "FYjhX53EKvbf4BmHPkbjCjaVmpXpPP0ru6oD20wbI/8=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.6.4+0.5.10/scala3lib_native0.5_3-3.6.4+0.5.10.pom"
+          "sha256": "lWu11o8crjqNCSSw5c/04JyyrjYXsaNYeI6+97fYjn0=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.8.3+0.5.10/scala3lib_native0.5_3-3.8.3+0.5.10.pom"
         },
         {
           "sha256": "uFKB43OXVh2bb72YY1H1/v96XJY6uvQlMW2RMWcbz0c=",
@@ -1163,28 +891,20 @@
           "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_2.13/2.13.14+0.5.3/scalalib_native0.5_2.13-2.13.14+0.5.3.pom"
         },
         {
-          "sha256": "od0yLwvrlGLDh18dD0D9FrPy6T4swHgxD3jyooXOUXI=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_2.13/2.13.14+0.5.5/scalalib_native0.5_2.13-2.13.14+0.5.5.pom"
-        },
-        {
-          "sha256": "Hy9asYr7rWQoYacR9k3pC0WL696SzxcdyJBoZOe83Fk=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_2.13/2.13.15+0.5.6/scalalib_native0.5_2.13-2.13.15+0.5.6.pom"
-        },
-        {
-          "sha256": "fUb+V881uyfEtuMsgdk3DNgddC2v+tinSOTeD3slFJA=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_2.13/2.13.16+0.5.8/scalalib_native0.5_2.13-2.13.16+0.5.8.pom"
-        },
-        {
-          "sha256": "7Rn9GFFWlbA+6x9VY9k46dgy7zxV755fLppDKIpm9tQ=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_2.13/2.13.18+0.5.10/scalalib_native0.5_2.13-2.13.18+0.5.10.jar"
-        },
-        {
-          "sha256": "HgLMhBBYJ54hVvv/xekQ53fU0MHzUFxbzLokdzpUV/8=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_2.13/2.13.18+0.5.10/scalalib_native0.5_2.13-2.13.18+0.5.10.pom"
+          "sha256": "uIyJsofyxy+WMLNFyPuJBiJTKQkH2oLjvNPzYlSpe/Y=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_2.13/2.13.8+0.5.2/scalalib_native0.5_2.13-2.13.8+0.5.2.jar"
         },
         {
           "sha256": "TiTBbv6eHFpdSMsyWb+BaNd/e7IbKs6l4y9aBTmbibI=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_2.13/2.13.8+0.5.2/scalalib_native0.5_2.13-2.13.8+0.5.2.pom"
+        },
+        {
+          "sha256": "GbZlt7K5MBhwv61KnZlnRD+E9bNEb5rzyap7+LsB5LQ=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_3/3.8.3+0.5.10/scalalib_native0.5_3-3.8.3+0.5.10.jar"
+        },
+        {
+          "sha256": "9lDlS1LkDZoD/Z51I/MwN+Jh6WBIXKG8Lb6WIzMGJ40=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_3/3.8.3+0.5.10/scalalib_native0.5_3-3.8.3+0.5.10.pom"
         },
         {
           "sha256": "oHFh11QvTzTeB9+Zv6GqKsi2XH9A8CaSOXm6EbKmK1s=",
@@ -1203,14 +923,6 @@
           "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.1/test-interface-sbt-defs_native0.5_3-0.5.1.pom"
         },
         {
-          "sha256": "VXXJAixfomituOw9iuEP11OjVIEzpP3Tu/FnYEcFf3s=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.10/test-interface-sbt-defs_native0.5_3-0.5.10.jar"
-        },
-        {
-          "sha256": "r4JCUBttg4vL0ErpMdLIyoEicKg+RI8cU7ykHqo1WqE=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.10/test-interface-sbt-defs_native0.5_3-0.5.10.pom"
-        },
-        {
           "sha256": "nxn6qOVle85aikIILqMRn1hk14y15U21UL3Xt9BN3N4=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.2/test-interface-sbt-defs_native0.5_3-0.5.2.jar"
         },
@@ -1225,30 +937,6 @@
         {
           "sha256": "UwRNQljCsP+t9mTiVortSCAJ+gDA+5In5IVUHO7X7yc=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.3/test-interface-sbt-defs_native0.5_3-0.5.3.pom"
-        },
-        {
-          "sha256": "1a6PMG6QPVboPZxU1BQY76yiWXfjgBKg5X0oplfBNPM=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.5/test-interface-sbt-defs_native0.5_3-0.5.5.jar"
-        },
-        {
-          "sha256": "4yjcB79LRPWcrFjzsNKJ8urEV+tYaO0fOKzO/NoihGk=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.5/test-interface-sbt-defs_native0.5_3-0.5.5.pom"
-        },
-        {
-          "sha256": "9vL8i+IoC2WgwZTGxbIqBJqOp1vJOrYZdjQcZ0ThhrM=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.6/test-interface-sbt-defs_native0.5_3-0.5.6.jar"
-        },
-        {
-          "sha256": "d3WsctDjcqZNEC6oHy365Tv4t22IW4ePGS6/K4uzgi0=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.6/test-interface-sbt-defs_native0.5_3-0.5.6.pom"
-        },
-        {
-          "sha256": "L9a2V4r/Fa+FvHAo+Oa2uWwL8/UPIaxMBJCKi6hjkpc=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.8/test-interface-sbt-defs_native0.5_3-0.5.8.jar"
-        },
-        {
-          "sha256": "99KW40fhxlWamg5+kpAbaMuYmJYZCbAmqfLvJr8pfaQ=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.8/test-interface-sbt-defs_native0.5_3-0.5.8.pom"
         },
         {
           "sha256": "IGk2uJ9ZLkCl1201FU9Rbhh3wuMjW4IdpVb385YdZeY=",
@@ -1267,14 +955,6 @@
           "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.1/test-interface_native0.5_3-0.5.1.pom"
         },
         {
-          "sha256": "gknJmSRMML4aHCLeJ4kSDZc2KEIeyXIn0WFy7ls16ak=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.10/test-interface_native0.5_3-0.5.10.jar"
-        },
-        {
-          "sha256": "DNlWxSMdGvzqR9GQ/bNQDv0Kuf37ETymXqLH4Q0cuE4=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.10/test-interface_native0.5_3-0.5.10.pom"
-        },
-        {
           "sha256": "Kmt6hF8ts3RuLX83BzNNbX/QlZ5XFt9+oml0FssUE1U=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.2/test-interface_native0.5_3-0.5.2.jar"
         },
@@ -1289,30 +969,6 @@
         {
           "sha256": "FoBcXlFsFLAC//PXRUDtpIooif/s7cnvZPWGUzL1Qi0=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.3/test-interface_native0.5_3-0.5.3.pom"
-        },
-        {
-          "sha256": "5PLJpheCqzB6K+QETL0wYYeOagZpgl8iR9ZPIUhDKcI=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.5/test-interface_native0.5_3-0.5.5.jar"
-        },
-        {
-          "sha256": "Ix5aHS18KEfFNN3MveoWi6t0HN4LaSavWJWtvMRQ/84=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.5/test-interface_native0.5_3-0.5.5.pom"
-        },
-        {
-          "sha256": "k7WuqWWfJ/YXH/eOXehOSH6zDzmqjD5h/GV6JWcPYFA=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.6/test-interface_native0.5_3-0.5.6.jar"
-        },
-        {
-          "sha256": "RGSAlZOhLqCqvE/wEiLIdmWbe0E8r8OQqDqOuQXU2Zs=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.6/test-interface_native0.5_3-0.5.6.pom"
-        },
-        {
-          "sha256": "kP03bxVCyaOpndWVa2yeC3BbvurRhhoH+4MCp3xlH+Q=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.8/test-interface_native0.5_3-0.5.8.jar"
-        },
-        {
-          "sha256": "Mtvfbo1EB+iTsC52/yiowEJyWr8gIjJfelrItx+k2NE=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.8/test-interface_native0.5_3-0.5.8.pom"
         },
         {
           "sha256": "O5gz+IhMXJugmXWQ5omYE00gSJ1QHOMqqjCe5Rsl8tc=",
@@ -1343,24 +999,12 @@
           "url": "https://repo1.maven.org/maven2/org/scala-native/windowslib_native0.5_3/0.5.3/windowslib_native0.5_3-0.5.3.pom"
         },
         {
-          "sha256": "nzJ3qWZkxkNxJoyfzjGxI4lI8zuAlox6wPZAcb0Imyg=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/windowslib_native0.5_3/0.5.5/windowslib_native0.5_3-0.5.5.pom"
+          "sha256": "K6zFdh4DkgoijlydILM9nFHUOq8vUuj4OezmMJZuuIA=",
+          "url": "https://repo1.maven.org/maven2/org/scala-sbt/compiler-interface/1.10.7/compiler-interface-1.10.7.jar"
         },
         {
-          "sha256": "cbFfamMBpZZuEQ+Hnzs4/VrZCDIPOZ/R81p4gCy5/kM=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/windowslib_native0.5_3/0.5.6/windowslib_native0.5_3-0.5.6.pom"
-        },
-        {
-          "sha256": "GPc8eTk+p2oKUkDKoFD6otXhUpIPYmpJ7pqF+Kkn/Cs=",
-          "url": "https://repo1.maven.org/maven2/org/scala-native/windowslib_native0.5_3/0.5.8/windowslib_native0.5_3-0.5.8.pom"
-        },
-        {
-          "sha256": "wzrICDUCdUQoATwVlo2e1UUMHbFmlHFTQExlB69Rcv8=",
-          "url": "https://repo1.maven.org/maven2/org/scala-sbt/compiler-interface/1.10.4/compiler-interface-1.10.4.jar"
-        },
-        {
-          "sha256": "fHnczWLZLrVy8/HD8Ms05HvrwJ61HWA6thscnYvkSBE=",
-          "url": "https://repo1.maven.org/maven2/org/scala-sbt/compiler-interface/1.10.4/compiler-interface-1.10.4.pom"
+          "sha256": "O3sNqL9YIKpQ9ESOGQId4RgxZPdKGAvQto59kvMATjE=",
+          "url": "https://repo1.maven.org/maven2/org/scala-sbt/compiler-interface/1.10.7/compiler-interface-1.10.7.pom"
         },
         {
           "sha256": "FfcLOLuV8wAv7JrqVAMPGbtOz7rWTGdCS15f6gnNdJ4=",
@@ -1371,28 +1015,12 @@
           "url": "https://repo1.maven.org/maven2/org/scala-sbt/test-interface/1.0/test-interface-1.0.pom"
         },
         {
-          "sha256": "uWEAPB7TyFznwHV3dopomtZXxz8jTWIO6tPrQshUpDQ=",
-          "url": "https://repo1.maven.org/maven2/org/scala-sbt/util-interface/1.10.4/util-interface-1.10.4.jar"
+          "sha256": "HWuR76QrcPwGTK7W1iliN04Tsnc3+IWofITGZ7ML5iU=",
+          "url": "https://repo1.maven.org/maven2/org/scala-sbt/util-interface/1.10.7/util-interface-1.10.7.jar"
         },
         {
-          "sha256": "+igaVKFk+M+iT7b+vtjIUCxPI2IKa1CXO/EIsMaqnbs=",
-          "url": "https://repo1.maven.org/maven2/org/scala-sbt/util-interface/1.10.4/util-interface-1.10.4.pom"
-        },
-        {
-          "sha256": "SslGko8nRGOrXK8Fi2XMa60niysCwRTai5mC7nXXSyI=",
-          "url": "https://repo1.maven.org/maven2/org/scalacheck/scalacheck_native0.5_3/1.18.0/scalacheck_native0.5_3-1.18.0.jar"
-        },
-        {
-          "sha256": "p45Z8Y74vN3VD7v9RDL/xwrbHzzra/cS68Lnch4LfzE=",
-          "url": "https://repo1.maven.org/maven2/org/scalacheck/scalacheck_native0.5_3/1.18.0/scalacheck_native0.5_3-1.18.0.pom"
-        },
-        {
-          "sha256": "D7UhhpcZIo7V6vM0wBCSLhh67pH9YRFBIunbAU1nePs=",
-          "url": "https://repo1.maven.org/maven2/org/scalacheck/scalacheck_native0.5_3/1.18.1/scalacheck_native0.5_3-1.18.1.jar"
-        },
-        {
-          "sha256": "8ZC0IQ1SNmSOLHkUNW/bu9a8b7NsQwwqL9vXcnv1gic=",
-          "url": "https://repo1.maven.org/maven2/org/scalacheck/scalacheck_native0.5_3/1.18.1/scalacheck_native0.5_3-1.18.1.pom"
+          "sha256": "1JRwyBXgcORPlQERbIPzWxeUE/Wq/pXimsKTxnzBYpc=",
+          "url": "https://repo1.maven.org/maven2/org/scala-sbt/util-interface/1.10.7/util-interface-1.10.7.pom"
         },
         {
           "sha256": "pQoySCCLJel5fER3Cf5CdgJlEL6uAegjZvQFpm2ajVc=",
@@ -1411,68 +1039,12 @@
           "url": "https://repo1.maven.org/maven2/org/scalameta/munit-diff_native0.5_3/1.0.0-RC1/munit-diff_native0.5_3-1.0.0-RC1.pom"
         },
         {
-          "sha256": "ay7M63wREVs3Eklq72Z6q0UVHpzbjUuqb0M8DQhTpOQ=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit-diff_native0.5_3/1.0.0/munit-diff_native0.5_3-1.0.0.jar"
-        },
-        {
-          "sha256": "m0hhbtvZg7KPJTrlzSQFIBY/R/dXkRntuNgBs1e+lbA=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit-diff_native0.5_3/1.0.0/munit-diff_native0.5_3-1.0.0.pom"
-        },
-        {
-          "sha256": "oBw2IpWJ1nfr2bTNAHW+YuucuUwuhz0ViboKBgEuUoc=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit-diff_native0.5_3/1.0.4/munit-diff_native0.5_3-1.0.4.jar"
-        },
-        {
-          "sha256": "BLhjp94Lwu/GRXjTXp5Lz4nAw6NdVcrjTJ83WwU2rwk=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit-diff_native0.5_3/1.0.4/munit-diff_native0.5_3-1.0.4.pom"
-        },
-        {
-          "sha256": "tmYnW9Yrb7Qfu+upzWennAnx+WEqwNERjbO5sSzTbDM=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit-diff_native0.5_3/1.1.0/munit-diff_native0.5_3-1.1.0.jar"
-        },
-        {
-          "sha256": "y2gy8rguIQt+8Mcedy0fP6pUIcXBdb6u/dr5wR17y6Y=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit-diff_native0.5_3/1.1.0/munit-diff_native0.5_3-1.1.0.pom"
-        },
-        {
-          "sha256": "X68XyyNC3kCHTexp8fXif7NerUuIATq1y6DCJGnqBQc=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit-scalacheck_native0.5_3/1.0.0/munit-scalacheck_native0.5_3-1.0.0.jar"
-        },
-        {
-          "sha256": "eqzWpgSGpLa28XKPrmw6o/jyKjaAXho3ErrJruXdCHk=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit-scalacheck_native0.5_3/1.0.0/munit-scalacheck_native0.5_3-1.0.0.pom"
-        },
-        {
           "sha256": "HYi76NqVB2Z0NGv62ZEsDbudtRFim8PZYNoz2cqTi28=",
           "url": "https://repo1.maven.org/maven2/org/scalameta/munit_native0.5_3/1.0.0-RC1/munit_native0.5_3-1.0.0-RC1.jar"
         },
         {
           "sha256": "Ya+7JIch2kY/oFAEXm2imwZ40gllBeBkwJxyGutJa2g=",
           "url": "https://repo1.maven.org/maven2/org/scalameta/munit_native0.5_3/1.0.0-RC1/munit_native0.5_3-1.0.0-RC1.pom"
-        },
-        {
-          "sha256": "vyYqxv01fhsd8324hmtw/5GXOVZGWHyiQcXNgJflMTI=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit_native0.5_3/1.0.0/munit_native0.5_3-1.0.0.jar"
-        },
-        {
-          "sha256": "zjdMSpWqYjC9WG5kIPVktblrtFVUXnPfAj0NSz3CzpE=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit_native0.5_3/1.0.0/munit_native0.5_3-1.0.0.pom"
-        },
-        {
-          "sha256": "j132ck4rDLAiwgNgPG8lvZ2RPx9eG9XGvgdmFQ8OLWU=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit_native0.5_3/1.0.4/munit_native0.5_3-1.0.4.jar"
-        },
-        {
-          "sha256": "mzME9DE25kFUWg8q79q3VKX8qwYYresQQHHHUFKnyiQ=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit_native0.5_3/1.0.4/munit_native0.5_3-1.0.4.pom"
-        },
-        {
-          "sha256": "ujZgiu3Ej9agZeJ24Sv5Vmrxte8BuevyL1K7TXMpAEU=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit_native0.5_3/1.1.0/munit_native0.5_3-1.1.0.jar"
-        },
-        {
-          "sha256": "3bep1vC8igu11gHggkkI4jM4qadWoZ9JXK86trhy2Co=",
-          "url": "https://repo1.maven.org/maven2/org/scalameta/munit_native0.5_3/1.1.0/munit_native0.5_3-1.1.0.pom"
         },
         {
           "sha256": "Xca4+lOW/p4afCty3xdKjrPpJ3DNw+cGNtPrpnPNDaM=",
@@ -1593,78 +1165,6 @@
         {
           "sha256": "NGkUERvgUAZ1sN4DkeOtk1fywXcgUmfTyRV0eFyg9Xs=",
           "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.12/3.2.19/scalatest_2.12-3.2.19.pom"
-        },
-        {
-          "sha256": "NWNOzc9c5rbWxyg/rYGsZy14VhmFmOBJvz3uYKI+D1I=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-core_native0.5_3/2.13.0/cats-core_native0.5_3-2.13.0.jar"
-        },
-        {
-          "sha256": "hAjeGVkIRUOGMqxqZiSLrb4+ShjaJh2j6+nCfO19r5Y=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-core_native0.5_3/2.13.0/cats-core_native0.5_3-2.13.0.pom"
-        },
-        {
-          "sha256": "I91IJ77eqEB75YqLiYeyekNMY6Uv9FLz8PxtT+IGW3w=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-effect-kernel_native0.5_3/3.7.0/cats-effect-kernel_native0.5_3-3.7.0.jar"
-        },
-        {
-          "sha256": "20YkNrwg4o7o3C+tmZ9adDxNqFjo2rZxgkk4Y91W1DM=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-effect-kernel_native0.5_3/3.7.0/cats-effect-kernel_native0.5_3-3.7.0.pom"
-        },
-        {
-          "sha256": "3BPLlRatzhjlyHnLDhlF/W4mOHWMTDYi7V1oOhXI5kY=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-effect-std_native0.5_3/3.7.0/cats-effect-std_native0.5_3-3.7.0.jar"
-        },
-        {
-          "sha256": "GN4pDgtCZf46E92YShxPNbdP6+/NQ1kgyVvdlP6oSrE=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-effect-std_native0.5_3/3.7.0/cats-effect-std_native0.5_3-3.7.0.pom"
-        },
-        {
-          "sha256": "JAxLJNCA8sc6CUX+/dUhdkI6bVJ/DA92FNKEbHBkdec=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-effect_native0.5_3/3.7.0/cats-effect_native0.5_3-3.7.0.jar"
-        },
-        {
-          "sha256": "gb8DCwf8sMxzPruxQxz39knseh/KclV5ghPMxNrZYaY=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-effect_native0.5_3/3.7.0/cats-effect_native0.5_3-3.7.0.pom"
-        },
-        {
-          "sha256": "hx1a5DWwLIvS/+dY9t/IdB8z147BtMR1/RUXk1Kwq2w=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-kernel_native0.5_3/2.13.0/cats-kernel_native0.5_3-2.13.0.jar"
-        },
-        {
-          "sha256": "9m29+dz/s7jp59IcTlaEZdGdCP7VhgI5S/IYHkaxVPw=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-kernel_native0.5_3/2.13.0/cats-kernel_native0.5_3-2.13.0.pom"
-        },
-        {
-          "sha256": "u/33fXiN7XuLO5XrNdIv6Jb6idJ3I8VPk2ydo7ozQbs=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-mtl_native0.5_3/1.6.0/cats-mtl_native0.5_3-1.6.0.jar"
-        },
-        {
-          "sha256": "6FQ8pE0ey51zIjm7U2HkgHlVG8lxsh6NxHL95nZLB7E=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/cats-mtl_native0.5_3/1.6.0/cats-mtl_native0.5_3-1.6.0.pom"
-        },
-        {
-          "sha256": "akZJgBS8DXwv8wThfI3fKFXW2Sp8AUeMGxDcJWdgZ78=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/discipline-core_native0.5_3/1.7.0/discipline-core_native0.5_3-1.7.0.jar"
-        },
-        {
-          "sha256": "rHrKjSg/dBlWqF6lkGmqyThpGaIPBuYqlyFgwQcRy0w=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/discipline-core_native0.5_3/1.7.0/discipline-core_native0.5_3-1.7.0.pom"
-        },
-        {
-          "sha256": "mOMHUMcShjhPEgIPggfMemQ2wsZKp9p/ZKryCC9SnRk=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/discipline-munit_native0.5_3/2.0.0/discipline-munit_native0.5_3-2.0.0.jar"
-        },
-        {
-          "sha256": "aqwhHcxkFoxMUAZJEJrwwWpYc+oogLEw/w2kcZpRSm4=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/discipline-munit_native0.5_3/2.0.0/discipline-munit_native0.5_3-2.0.0.pom"
-        },
-        {
-          "sha256": "SRAocNm/idaMlq5/1KQSUOzfGzPuEiHHP/JOktlTHfk=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/scalac-compat-annotation_3/0.1.4/scalac-compat-annotation_3-0.1.4.jar"
-        },
-        {
-          "sha256": "UnVD5bUAVLjacOWWAA5saraOgbHbIaBNjxvm4wIOI+M=",
-          "url": "https://repo1.maven.org/maven2/org/typelevel/scalac-compat-annotation_3/0.1.4/scalac-compat-annotation_3-0.1.4.pom"
         }
       ],
       "native": {
@@ -1933,7 +1433,7 @@
         ]
       },
       "platform": "Native",
-      "scalaVersion": "3.6.4"
+      "scalaVersion": "3.8.3"
     }
   },
   "version": 8

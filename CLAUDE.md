@@ -11,7 +11,7 @@ scala-cli-nix: Nix packaging for scala-cli applications with per-artifact FOD gr
 - The CLI shells out to a `scala-cli` binary at lock time. It reads the path from `SCALA_CLI_NIX_SCALA_CLI` (set by the Nix wrapper to a kubukoz/scala-cli fork release) and falls back to `scala-cli` on PATH otherwise. The fork is internal: never on the user's PATH, never used inside the Nix sandbox.
 - `--library` (not `--standalone`) is intentional for JVM builds — it produces a tiny JAR with only user code. Dependencies stay as individual Nix store paths on the classpath.
 - Both JARs and POMs must be in the lockfile. POMs are needed for offline Coursier resolution but filtered out of the runtime classpath.
-- Lockfile version is 6. It uses a multi-target `targets` map (even for single-target projects). `lib.nix` exposes both `buildScalaCliApp` (single derivation) and `buildScalaCliApps` (attrset of derivations for cross projects).
+- Lockfile version is 8. It uses a multi-target `targets` map (even for single-target projects). `lib.nix` exposes both `buildScalaCliApp` (single derivation) and `buildScalaCliApps` (attrset of derivations for cross projects).
 - `--platform` and `--scala-version` are always passed to `scala-cli package` and `scala-cli export --json` to select the correct target from multi-platform sources.
 
 ## Commands
