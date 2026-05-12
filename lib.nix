@@ -1,6 +1,6 @@
 { scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib, clang, which }:
 let
-  supportedVersion = 8;
+  supportedVersion = 9;
 
   fetchAll = deps: builtins.map (dep: { inherit dep; path = builtins.fetchurl dep; }) deps;
 
@@ -14,6 +14,7 @@ let
         else true;
       native = target: target.native or null;
       test = target: target.test or null;
+      sbtJson = json.sbt or null;
     in assert versionCheck; {
       sources = json.sources or [];
       resourceDirs = json.resourceDirs or [];
@@ -39,6 +40,18 @@ let
             else null;
         }
       ) json.targets;
+      sbt =
+        if sbtJson != null
+        then {
+          inherit (sbtJson) sbtVersion scalaBootVersion;
+          mainClass = sbtJson.mainClass or null;
+          launcherJar = { dep = sbtJson.launcherJar; path = builtins.fetchurl sbtJson.launcherJar; };
+          bootJars = fetchAll sbtJson.bootJars;
+          bootCoursierCache = fetchAll sbtJson.bootCoursierCache;
+          scalaInstance = fetchAll sbtJson.scalaInstance;
+          compilerBridge = fetchAll sbtJson.compilerBridge;
+        }
+        else null;
     };
 
   # Build a Coursier-compatible cache directory from fetched deps
@@ -250,6 +263,183 @@ let
     then buildNativeApp { inherit pname version src sources resourceDirs attrOverrides; fetched = targetFetched; }
     else buildJvmApp { inherit pname version src sources resourceDirs mainClass attrOverrides; fetched = targetFetched; };
 
+  # Build sbt's boot dir layout. Two sublayouts:
+  #   - `<bootDir>/<scalaBootVersion>/lib/{scala-library,scala-compiler,scala-reflect,scala-xml_<bin>-<ver>}.jar`
+  #     The launcher expects the Scala stdlib jars here with their
+  #     *unversioned* sbt-flavored filenames (`scala-library.jar` etc.).
+  #   - `<bootDir>/<scalaBootVersion>/org.scala-sbt/sbt/<sbtVersion>/<filename>.jar`
+  #     All other sbt-application jars, named as published on Maven.
+  # `bootJars` should be ONLY the resolved-winner jars (no evicted versions,
+  # no POMs); otherwise sbt-launch refuses to start with #4955.
+  mkSbtBootDir = name: sbtVersion: scalaBootVersion: bootJars:
+    let
+      # Map a versioned Scala stdlib URL to the unversioned filename sbt-launch wants.
+      libRename = url:
+        let
+          isLib = grp: nm:
+            lib.hasInfix "/${grp}/${nm}/${scalaBootVersion}/${nm}-${scalaBootVersion}.jar" url;
+        in
+          if isLib "org/scala-lang" "scala-library" then "scala-library.jar"
+          else if isLib "org/scala-lang" "scala-compiler" then "scala-compiler.jar"
+          else if isLib "org/scala-lang" "scala-reflect" then "scala-reflect.jar"
+          else if lib.hasInfix "/org/scala-lang/modules/scala-xml_" url
+            then baseNameOf url
+          else null;
+      libLinkCommands = builtins.concatLists (builtins.map (entry:
+        let mapped = libRename entry.dep.url;
+        in if mapped == null then [] else [ ''
+          ln -sf ${entry.path} $out/${scalaBootVersion}/lib/${mapped}
+        '' ]
+      ) bootJars);
+      appLinkCommands = builtins.map (entry: ''
+        ln -sf ${entry.path} $out/${scalaBootVersion}/org.scala-sbt/sbt/${sbtVersion}/${baseNameOf entry.dep.url}
+      '') bootJars;
+    in runCommand name {} (''
+      mkdir -p $out/${scalaBootVersion}/lib $out/${scalaBootVersion}/org.scala-sbt/sbt/${sbtVersion}
+    '' + builtins.concatStringsSep "\n" (libLinkCommands ++ appLinkCommands));
+
+  # Project-independent sbt environment: launcher + boot dir + a Coursier
+  # cache prepopulated with everything sbt needs to bootstrap itself
+  # (boot transitive set incl. evicted POMs, scalaInstance, compiler bridge).
+  # The user's runtime libraryDependencies are layered on top at build time.
+  #
+  # Two projects on the same sbt version + scalaBootVersion + same
+  # scalaInstance/bridge share this exact toolchain via Nix's content-addressed
+  # store. The cache key intentionally excludes anything project-specific
+  # (pname, sources, user runtime deps).
+  mkSbtToolchain = sbtBlock:
+    let
+      key = "${sbtBlock.sbtVersion}-${sbtBlock.scalaBootVersion}";
+      bootDeps =
+        sbtBlock.bootCoursierCache ++
+        sbtBlock.scalaInstance ++
+        sbtBlock.compilerBridge;
+    in {
+      launcherJar = sbtBlock.launcherJar.path;
+      inherit (sbtBlock) sbtVersion scalaBootVersion mainClass;
+      bootDir = mkSbtBootDir "sbt-boot-${key}"
+        sbtBlock.sbtVersion sbtBlock.scalaBootVersion sbtBlock.bootJars;
+      coursierCache = mkCacheDir "sbt-coursier-${key}" bootDeps;
+    };
+
+  buildSbtAppImpl = { pname, version, src, sources, fetched, attrOverrides }:
+    let
+      sbtBlock =
+        if fetched.sbt == null
+        then builtins.throw "buildSbtApp: lockfile has no `sbt` section. Run `scn lock-sbt` first."
+        else fetched.sbt;
+
+      toolchain = mkSbtToolchain sbtBlock;
+
+      # User runtime deps are layered on top of the toolchain's Coursier cache
+      # at build time. Keeping them separate (rather than merged into the
+      # toolchain) preserves the toolchain's shareability across projects.
+      userDepsCache = mkCacheDir "sbt-userdeps-${pname}"
+        fetched.targets.jvm.libraryDependencies;
+
+      # Filter src down to what's listed in `sources` + the build.sbt-related
+      # files sbt needs. The filtered tree must include build.sbt, project/,
+      # and the source files; nothing else.
+      filteredSrc =
+        if sources != []
+        then lib.cleanSourceWith {
+          src = src;
+          filter = path: type:
+            let rel = lib.removePrefix (toString src + "/") (toString path);
+            in if type == "directory"
+              then rel == "project"
+                || lib.hasPrefix "project/" rel
+                || builtins.any (s: lib.hasPrefix (rel + "/") s) sources
+              else rel == "build.sbt"
+                || lib.hasPrefix "project/" rel
+                || builtins.elem rel sources;
+        }
+        else src;
+
+      # Runtime classpath for the wrapper: JAR-only entries from libraryDependencies.
+      libraryJars = builtins.filter
+        (e: builtins.match ".*\\.jar" e.dep.url != null)
+        fetched.targets.jvm.libraryDependencies;
+      libraryClasspath = builtins.concatStringsSep ":" (builtins.map (e: e.path) libraryJars);
+
+      mainClass =
+        if toolchain.mainClass != null
+        then toolchain.mainClass
+        else builtins.throw "buildSbtApp: lockfile has no mainClass and explicit override not yet supported; set `Compile / mainClass := Some(\"...\")` in build.sbt and re-lock.";
+    in stdenv.mkDerivation (attrOverrides ({
+      inherit pname version;
+      src = filteredSrc;
+      buildInputs = [ openjdk makeWrapper ];
+      meta.mainProgram = pname;
+
+      configurePhase = ''
+        runHook preConfigure
+
+        # Materialize writable boot dir + Coursier cache. sbt writes into
+        # both (compiled compiler bridge, internal lockfiles), so we can't
+        # use the read-only FOD paths directly. `cp -rs` populates with
+        # symlinks pointing at the FODs.
+        export SBT_HOME=$TMPDIR/sbt-home
+        export SBT_BOOT=$SBT_HOME/boot
+        export SBT_SBTBOOT=$SBT_HOME/sbtboot
+        export SBT_IVY=$SBT_HOME/ivy
+        export COURSIER_CACHE=$SBT_HOME/coursier
+        mkdir -p $SBT_BOOT $SBT_SBTBOOT $SBT_IVY $COURSIER_CACHE
+
+        # Project-independent toolchain (shared via Nix store across projects).
+        cp -rs --no-preserve=mode ${toolchain.bootDir}/. $SBT_BOOT/
+        cp -rs --no-preserve=mode ${toolchain.coursierCache}/. $COURSIER_CACHE/
+        # Layer the user's runtime deps on top of the toolchain's Coursier cache.
+        cp -rs --no-preserve=mode ${userDepsCache}/. $COURSIER_CACHE/
+
+        export HOME=$TMPDIR/home
+        mkdir -p $HOME
+
+        runHook postConfigure
+      '';
+
+      # The sbt launcher's JVM-level flags. -Dsbt.boot.directory etc. tell it
+      # to use our redirected dirs; -Dsbt.offline=true blocks net access in
+      # all internal Coursier calls.
+      SBT_LAUNCHER_OPTS = lib.concatStringsSep " " [
+        "-Xmx2G"
+        "-Dsbt.global.base=$SBT_SBTBOOT"
+        "-Dsbt.boot.directory=$SBT_BOOT"
+        "-Dsbt.ivy.home=$SBT_IVY"
+        "-Dsbt.offline=true"
+        "-Dsbt.supershell=false"
+        "-Dsbt.color=false"
+      ];
+
+      buildPhase = ''
+        runHook preBuild
+        # `-Dsbt.color=false` already disables colors; `-Dsbt.supershell=false`
+        # disables the interactive bar. Closing stdin (`< /dev/null`) puts sbt
+        # in batch mode without needing the `-batch` flag (which only the
+        # `sbt` shell script understands, not the launcher jar directly).
+        java $SBT_LAUNCHER_OPTS \
+          -jar ${toolchain.launcherJar} \
+          package < /dev/null
+        runHook postBuild
+      '';
+
+      installPhase = ''
+        runHook preInstall
+        mkdir -p $out/share $out/bin
+        # `sbt package` writes to target/scala-<bin>/<name>_<bin>-<version>.jar
+        # — pick whichever JAR landed there (single-module).
+        JARS=( target/scala-*/*.jar )
+        if [ ''${#JARS[@]} -ne 1 ]; then
+          echo "expected exactly one packaged JAR, found: ''${JARS[@]}"
+          exit 1
+        fi
+        cp "''${JARS[0]}" $out/share/${pname}.jar
+        makeWrapper ${openjdk}/bin/java $out/bin/${pname} \
+          --add-flags "-cp ${libraryClasspath}:$out/share/${pname}.jar ${mainClass}"
+        runHook postInstall
+      '';
+    }) "JVM");
+
   # Normalize dots to underscores for Nix attribute name ergonomics
   nixKey = key: builtins.replaceStrings [ "." ] [ "_" ] key;
 
@@ -305,5 +495,15 @@ in {
       sources = fetched.sources;
       resourceDirs = fetched.resourceDirs;
       targetFetched = fetched.targets.${resolvedTarget};
+    };
+
+  # Build an sbt-managed app using sbt itself inside the Nix sandbox.
+  # Requires the lockfile to carry an `sbt` section (run `scn lock-sbt`).
+  buildSbtApp = { pname, version, src, lockFile, attrOverrides ? (attrs: _platform: attrs) }:
+    let fetched = fetchDeps lockFile;
+    in buildSbtAppImpl {
+      inherit pname version src attrOverrides;
+      sources = fetched.sources;
+      fetched = fetched;
     };
 }

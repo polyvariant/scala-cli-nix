@@ -1,5 +1,6 @@
 {
-  "resourceDirs": [],
+  "resourceDirs": [
+  ],
   "sources": [
     "src/main.scala"
   ],
@@ -410,5 +411,5 @@
       "scalaVersion": "3.8.3"
     }
   },
-  "version": 8
+  "version": 9
 }
