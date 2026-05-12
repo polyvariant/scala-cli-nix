@@ -824,7 +824,7 @@ def computeLock(inputs: List[String])(using HashCache): IO[String] = {
     firstTarget = targets.head
     firstExportJson <- exec(
       scalaCli,
-      ("--power" :: "export" :: "--json" :: "--server=false" :: "--offline" ::
+      ("--power" :: "export" :: "--json" :: "--server=false" ::
         "--platform" :: firstTarget.platformFlag ::
         firstTarget.scalaVersion.toList
           .flatMap(v => List("--scala-version", v)) ++
@@ -866,7 +866,7 @@ private def computeTargetLock(
   val versionArgs =
     target.scalaVersion.toList.flatMap(v => List("--scala-version", v))
   val exportArgs =
-    "--power" :: "export" :: "--json" :: "--server=false" :: "--offline" ::
+    "--power" :: "export" :: "--json" :: "--server=false" ::
       "--platform" :: target.platformFlag :: versionArgs ++ inputArgs
 
   for {
