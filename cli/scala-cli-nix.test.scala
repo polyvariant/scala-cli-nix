@@ -599,3 +599,105 @@ class RepoBaseFromCoordsTests extends munit.FunSuite {
     assertEquals(repoBaseFromCoords(url, "g", "a", "1.0"), "")
   }
 }
+
+class MergeWinnersAndDeclaredTests extends munit.FunSuite {
+
+  private def entry(url: String): ArtifactEntry = ArtifactEntry(url, "h")
+
+  private val scalaXmlBase =
+    "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-xml_3"
+  private val catsCoreBase =
+    "https://repo1.maven.org/maven2/org/typelevel/cats-core_3"
+
+  test(
+    "evicted JAR for a coordinate already covered by a winner is dropped"
+  ) {
+    // Regression: a single `(group, artifact)` getting two JARs on the
+    // runtime classpath causes a NoSuchMethodError between bytecode compiled
+    // against the winner's API and classes loaded from the evicted JAR.
+    val winners = List(
+      entry(s"$scalaXmlBase/2.4.0/scala-xml_3-2.4.0.jar"),
+      entry(s"$scalaXmlBase/2.4.0/scala-xml_3-2.4.0.pom")
+    )
+    val declared = List(
+      entry(s"$scalaXmlBase/2.1.0/scala-xml_3-2.1.0.jar"),
+      entry(s"$scalaXmlBase/2.1.0/scala-xml_3-2.1.0.pom")
+    )
+    val merged = mergeWinnersAndDeclared(winners, declared)
+    val jarUrls = merged.filter(isJarUrl).map(_.url)
+    assertEquals(
+      jarUrls,
+      List(s"$scalaXmlBase/2.4.0/scala-xml_3-2.4.0.jar")
+    )
+    // POM of the evicted version is kept — scala-cli's offline resolver
+    // needs it to walk the dependency graph.
+    assert(
+      merged.exists(_.url == s"$scalaXmlBase/2.1.0/scala-xml_3-2.1.0.pom")
+    )
+  }
+
+  test("declared JAR for a coordinate the winners don't cover is kept") {
+    val winners = List(
+      entry(s"$scalaXmlBase/2.4.0/scala-xml_3-2.4.0.jar"),
+      entry(s"$scalaXmlBase/2.4.0/scala-xml_3-2.4.0.pom")
+    )
+    val declared = List(
+      entry(s"$catsCoreBase/2.13.0/cats-core_3-2.13.0.jar"),
+      entry(s"$catsCoreBase/2.13.0/cats-core_3-2.13.0.pom")
+    )
+    val merged = mergeWinnersAndDeclared(winners, declared)
+    assert(
+      merged.exists(_.url == s"$catsCoreBase/2.13.0/cats-core_3-2.13.0.jar")
+    )
+  }
+
+  test("at most one JAR per (group, artifact) in the merged result") {
+    val winners = List(
+      entry(s"$scalaXmlBase/2.4.0/scala-xml_3-2.4.0.jar"),
+      entry(s"$scalaXmlBase/2.4.0/scala-xml_3-2.4.0.pom")
+    )
+    val declared = List(
+      entry(s"$scalaXmlBase/2.1.0/scala-xml_3-2.1.0.jar"),
+      entry(s"$scalaXmlBase/2.1.0/scala-xml_3-2.1.0.pom"),
+      entry(s"$scalaXmlBase/2.2.0/scala-xml_3-2.2.0.jar"),
+      entry(s"$scalaXmlBase/2.2.0/scala-xml_3-2.2.0.pom")
+    )
+    val merged = mergeWinnersAndDeclared(winners, declared)
+    val jarsByCoord = merged.filter(isJarUrl).groupBy(groupArtifactPath)
+    jarsByCoord.foreach { (coord, jars) =>
+      assertEquals(jars.size, 1, s"more than one JAR for $coord: $jars")
+    }
+  }
+
+  test("result is deduplicated and sorted by URL") {
+    val a = entry(s"$catsCoreBase/2.13.0/cats-core_3-2.13.0.jar")
+    val b = entry(s"$scalaXmlBase/2.4.0/scala-xml_3-2.4.0.jar")
+    val merged = mergeWinnersAndDeclared(List(b, a), List(a, b))
+    assertEquals(merged.map(_.url), List(a, b).map(_.url).sorted)
+  }
+}
+
+class GroupArtifactPathTests extends munit.FunSuite {
+  test("standard maven layout: strips /<version>/<file> suffix") {
+    val e = ArtifactEntry(
+      "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-xml_3/2.4.0/scala-xml_3-2.4.0.jar",
+      "h"
+    )
+    assertEquals(
+      groupArtifactPath(e),
+      "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-xml_3"
+    )
+  }
+
+  test("two URLs of the same (g, a) at different versions share the prefix") {
+    val v1 = ArtifactEntry(
+      "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-xml_3/2.1.0/scala-xml_3-2.1.0.jar",
+      "h"
+    )
+    val v2 = ArtifactEntry(
+      "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-xml_3/2.4.0/scala-xml_3-2.4.0.pom",
+      "h"
+    )
+    assertEquals(groupArtifactPath(v1), groupArtifactPath(v2))
+  }
+}

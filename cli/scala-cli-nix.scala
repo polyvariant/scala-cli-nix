@@ -717,7 +717,35 @@ def collectEntries(
     (entries, pomPaths) <- resolved
     resolvedUrls = entries.map(_.url).toSet
     declaredPoms <- collectDeclaredPoms(pomPaths, resolvedUrls)
-  } yield (entries ++ declaredPoms).distinctBy(_.url).sortBy(_.url)
+  } yield mergeWinnersAndDeclared(entries, declaredPoms)
+}
+
+def isJarUrl(e: ArtifactEntry): Boolean = e.url.endsWith(".jar")
+
+/** The `…/<groupPath>/<artifact>` portion of a Maven URL — i.e. the URL with
+  * its `/<version>/<file>` suffix stripped. Two URLs share this prefix iff
+  * they're the same (group, artifact) coordinate.
+  */
+def groupArtifactPath(e: ArtifactEntry): String =
+  e.url.replaceFirst("/[^/]+/[^/]+$", "")
+
+/** Combine winners (from the resolved transitive fetch) with the
+  * declared-evicted POM/JAR set, dropping any declared JAR whose (group,
+  * artifact) is already represented by a winner. Extra JARs for the same
+  * coordinate would otherwise shadow the winner's classes on the runtime
+  * classpath (different versions => NoSuchMethodError). POMs of evicted
+  * versions are kept — scala-cli's offline resolver still walks them.
+  */
+def mergeWinnersAndDeclared(
+    winners: List[ArtifactEntry],
+    declared: List[ArtifactEntry]
+): List[ArtifactEntry] = {
+  val winnerGroupArtifacts =
+    winners.filter(isJarUrl).map(groupArtifactPath).toSet
+  val filteredDeclared = declared.filterNot { e =>
+    isJarUrl(e) && winnerGroupArtifacts.contains(groupArtifactPath(e))
+  }
+  (winners ++ filteredDeclared).distinctBy(_.url).sortBy(_.url)
 }
 
 // --- scala-cli helpers ---

@@ -107,6 +107,7 @@
           example-scala-native-ce-cross = pkgs.callPackage ./examples/scala-native-ce-cross/derivation.nix { };
           example-scala-resources = pkgs.callPackage ./examples/scala-resources/derivation.nix { };
           example-scala3-native-image = pkgs.callPackage ./examples/scala3-native-image/derivation.nix { };
+          example-scala3-shadowed-deps = pkgs.callPackage ./examples/scala3-shadowed-deps/derivation.nix { };
         in packageTests // {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)
@@ -206,6 +207,21 @@
               touch $out
             else
               echo "FAIL: expected 'hello from graalvm native image!', got '$output'"
+              exit 1
+            fi
+          '';
+          # Regression: a transitive POM (scalatest 3.2.9) declares scala-xml_3:2.0.0;
+          # if that JAR ends up on the runtime classpath alongside our 2.4.0
+          # winner, the binary throws NoSuchMethodError on `Node.child()` (the
+          # signature changed between 2.x). Running the binary verifies the
+          # classpath only carries the resolved winner.
+          example-scala3-shadowed-deps = pkgs.runCommand "check-example-scala3-shadowed-deps" { } ''
+            output=$(${example-scala3-shadowed-deps}/bin/example-scala3-shadowed-deps)
+            if [ "$output" = "hello from shadowed-deps! grandchildren=2" ]; then
+              echo "OK: example-scala3-shadowed-deps output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello from shadowed-deps! grandchildren=2', got '$output'"
               exit 1
             fi
           '';

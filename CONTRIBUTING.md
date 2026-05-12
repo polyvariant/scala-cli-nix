@@ -98,7 +98,7 @@ Target keys use only the dimensions that vary:
 - `resourceDirs` — top-level, shared across targets. Resource directories declared via `//> using resourceDir` (or equivalent CLI options), as paths relative to the project root. The build pulls each directory into the filtered source tree as a whole subtree so `scala-cli package` embeds its contents into the JAR (JVM) or the linked binary (Native).
 - `targets.<key>.exportHash` — SHA-1 hex digest of the canonicalized (sorted keys, no spaces) `scala-cli export --json` output for this target, followed by a newline. Used for per-target staleness detection.
 - `targets.<key>.platform` — `"JVM"` or `"Native"`. Determines the build strategy.
-- `targets.<key>.compiler` / `libraryDependencies` — JARs, their POMs, and parent POMs. Parent POMs are needed because Coursier resolves version inheritance from parent POMs during offline resolution.
+- `targets.<key>.compiler` / `libraryDependencies` — JARs, their POMs, and parent POMs. Parent POMs are needed because Coursier resolves version inheritance from parent POMs during offline resolution. The lock command walks each resolved POM's declared deps and materializes their POMs too (so scala-cli's offline resolver can see the full dep graph), but it does **not** materialize a JAR for any `(group, artifact)` already covered by the main resolution winner — an extra JAR at a different version on the runtime classpath would shadow the winner's classes (NoSuchMethodError at runtime).
 - `targets.<key>.native` — present for Scala Native targets. Its three sub-fields (`compilerPlugins`, `runtimeDependencies`, `toolingDependencies`) are resolved independently because tooling dependencies target Scala 2.12, while the others use the project's Scala version.
 - `targets.<key>.test` — optional. Present when the project has test sources or test-only deps. Contains `sources` (test source files), `resourceDirs` (test-scope resource directories, merged with the top-level `resourceDirs` when running tests), and `libraryDependencies` (full main+test classpath; reuses the target's `compiler` and `native` blocks).
 
@@ -233,6 +233,7 @@ examples/
   scala-native-ce-cross/  # Cross JVM+Native example (cats-effect)
   scala-resources/        # Cross JVM+Native example using //> using resourceDir
   scala3-native-image/    # JVM target built as a GraalVM native image (nativeImage = true)
+  scala3-shadowed-deps/   # Regression guard: builds against a real lockfile that includes an evicted-POM coordinate; the binary calls `Node.child` to verify the runtime classpath isn't shadowed by a duplicate JAR
 ```
 
 ### Running checks
