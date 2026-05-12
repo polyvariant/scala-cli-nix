@@ -21,49 +21,60 @@
         # fork has fixes the lock workflow depends on. This is internal —
         # neither the sandboxed build (`lib.nix`) nor the user's PATH sees the
         # fork.
-        scala-cli-nix-cli = let
-          base = final.callPackage ./cli/derivation.nix { };
-          forkScalaCli =
-            let
-              assets = {
-                "aarch64-darwin" = {
-                  asset = "scala-cli-aarch64-apple-darwin.gz";
-                  sha256 = "1h2ghqp0jan7hxzqfnfyyvhyn9dpyjfak1cd73sm1k2qbhvcm1pg";
+        #
+        # `scala-cli-nix-cli-native-image` is the same CLI built as a GraalVM
+        # native image (no JVM at runtime). Slower to build, much faster to
+        # start.
+        inherit (
+          let
+            forkScalaCli =
+              let
+                assets = {
+                  "aarch64-darwin" = {
+                    asset = "scala-cli-aarch64-apple-darwin.gz";
+                    sha256 = "1h2ghqp0jan7hxzqfnfyyvhyn9dpyjfak1cd73sm1k2qbhvcm1pg";
+                  };
+                  "x86_64-linux" = {
+                    asset = "scala-cli-x86_64-pc-linux.gz";
+                    sha256 = "03788lp7mycvm1p6ji7000vywhaw2f97xg8mxypj10gwy0n9hc8b";
+                  };
                 };
-                "x86_64-linux" = {
-                  asset = "scala-cli-x86_64-pc-linux.gz";
-                  sha256 = "03788lp7mycvm1p6ji7000vywhaw2f97xg8mxypj10gwy0n9hc8b";
+                asset = assets.${final.stdenv.hostPlatform.system}
+                  or (throw "scala-cli fork release has no asset for ${final.stdenv.hostPlatform.system}");
+                src = final.fetchurl {
+                  url = "https://github.com/kubukoz/scala-cli/releases/download/fork-c043db1/${asset.asset}";
+                  inherit (asset) sha256;
                 };
-              };
-              asset = assets.${final.stdenv.hostPlatform.system}
-                or (throw "scala-cli fork release has no asset for ${final.stdenv.hostPlatform.system}");
-              src = final.fetchurl {
-                url = "https://github.com/kubukoz/scala-cli/releases/download/fork-c043db1/${asset.asset}";
-                inherit (asset) sha256;
-              };
-            in (prev.scala-cli.override { jre = prev.jdk; }).overrideAttrs (old: {
-              version = "fork-c043db1";
-              inherit src;
-            });
-        in final.symlinkJoin {
-          name = "scala-cli-nix";
-          paths = [ base ];
-          nativeBuildInputs = [ final.makeWrapper ];
-          postBuild = ''
-            wrapProgram $out/bin/scala-cli-nix \
-              --set-default SCALA_CLI_NIX_SCALA_CLI ${forkScalaCli}/bin/scala-cli
-            ln -s scala-cli-nix $out/bin/scn
+              in (prev.scala-cli.override { jre = prev.jdk; }).overrideAttrs (old: {
+                version = "fork-c043db1";
+                inherit src;
+              });
+            wrapCli = name: base: final.symlinkJoin {
+              inherit name;
+              paths = [ base ];
+              nativeBuildInputs = [ final.makeWrapper ];
+              postBuild = ''
+                wrapProgram $out/bin/scala-cli-nix \
+                  --set-default SCALA_CLI_NIX_SCALA_CLI ${forkScalaCli}/bin/scala-cli
+                ln -s scala-cli-nix $out/bin/scn
 
-            # zsh completion: nixpkgs auto-loads files under share/zsh/site-functions
-            # via the standard fpath. Covers both scala-cli-nix and the scn alias.
-            install -Dm644 ${./cli/_scala-cli-nix} $out/share/zsh/site-functions/_scala-cli-nix
-          '';
-          # symlinkJoin drops passthru by default; forward the unwrapped
-          # derivation's `passthru.tests` so consumers (and our own checks)
-          # can run the CLI's munit suite via `nix flake check`.
-          passthru = base.passthru or { };
-          meta.mainProgram = "scala-cli-nix";
-        };
+                # zsh completion: nixpkgs auto-loads files under share/zsh/site-functions
+                # via the standard fpath. Covers both scala-cli-nix and the scn alias.
+                install -Dm644 ${./cli/_scala-cli-nix} $out/share/zsh/site-functions/_scala-cli-nix
+              '';
+              # symlinkJoin drops passthru by default; forward the unwrapped
+              # derivation's `passthru.tests` so consumers (and our own checks)
+              # can run the CLI's munit suite via `nix flake check`.
+              passthru = base.passthru or { };
+              meta.mainProgram = "scala-cli-nix";
+            };
+          in {
+            scala-cli-nix-cli = wrapCli "scala-cli-nix"
+              (final.callPackage ./cli/derivation.nix { });
+            scala-cli-nix-cli-native-image = wrapCli "scala-cli-nix-native-image"
+              (final.callPackage ./cli/derivation.nix { nativeImage = true; });
+          }
+        ) scala-cli-nix-cli scala-cli-nix-cli-native-image;
       };
 
       packages = forAllSystems (system:
@@ -74,6 +85,7 @@
           };
         in {
           default = pkgs.scala-cli-nix-cli;
+          inherit (pkgs) scala-cli-nix-cli-native-image;
         }
       );
 

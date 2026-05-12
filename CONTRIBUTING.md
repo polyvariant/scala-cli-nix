@@ -189,6 +189,7 @@ The overlay provides two packages:
 |---|---|
 | `scala-cli-nix` | The build library (`buildScalaCliApp` and `buildScalaCliApps`) |
 | `scala-cli-nix-cli` | The CLI (init/lock commands), built by `buildScalaCliApp` itself (self-hosting); exposes both `scala-cli-nix` and the shorter `scn` alias |
+| `scala-cli-nix-cli-native-image` | Same CLI built with `nativeImage = true`; no JVM at runtime, fast startup, slower to build |
 
 `pkgs.scala-cli` itself is **not** overridden — users get whatever upstream nixpkgs ships. Likewise, the sandboxed Nix build (`lib.nix`) uses `prev.scala-cli`.
 
