@@ -19,13 +19,13 @@ import caseapp.core.app.Command
 import caseapp.core.app.CommandsEntryPoint
 import coursierapi.*
 import fs2.Stream
+import fs2.hashing.{HashAlgorithm, Hashing}
 import fs2.io.file.{Files, Path}
 import fs2.io.process.ProcessBuilder
 import io.circe.{Codec, Decoder, Json, Printer}
 import io.circe.parser.parse as parseJson
 import io.circe.syntax.*
 import java.io.File
-import java.security.MessageDigest
 import java.util.Base64
 import scala.jdk.CollectionConverters.*
 import scala.xml.{Node, NodeSeq, XML}
@@ -185,15 +185,12 @@ class HashCache(
 }
 
 private def computeSha256(path: Path): IO[String] =
-  IO(MessageDigest.getInstance("SHA-256")).flatMap { digest =>
-    Files[IO]
-      .readAll(path)
-      .chunks
-      .evalMap(c => IO(digest.update(c.toByteBuffer)))
-      .compile
-      .drain >>
-      IO(Base64.getEncoder.encodeToString(digest.digest()))
-  }
+  Files[IO]
+    .readAll(path)
+    .through(Hashing[IO].hash(HashAlgorithm.SHA256))
+    .compile
+    .lastOrError
+    .map(h => Base64.getEncoder.encodeToString(h.bytes.toArray))
 
 object HashCache {
 
@@ -235,10 +232,13 @@ object HashCache {
 def sha256Base64(path: Path)(using cache: HashCache): IO[String] =
   cache.get(path)
 
-def sha1Hex(s: String): String = {
-  val digest = MessageDigest.getInstance("SHA-1")
-  digest.digest(s.getBytes("UTF-8")).map("%02x".format(_)).mkString
-}
+def sha1Hex(s: String): String =
+  Hashing
+    .hashPureStream(HashAlgorithm.SHA1, Stream.emits(s.getBytes("UTF-8")))
+    .bytes
+    .toArray
+    .map("%02x".format(_))
+    .mkString
 
 // --- Process helpers ---
 
