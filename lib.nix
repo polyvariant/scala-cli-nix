@@ -1,8 +1,11 @@
-{ scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib, clang, which, graalvmPackages }:
+{ scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib, clang, which, graalvmPackages, fetchurl }:
 let
   supportedVersion = 8;
 
-  fetchAll = deps: builtins.map (dep: { inherit dep; path = builtins.fetchurl dep; }) deps;
+  # Each fetchurl produces its own FOD — per-artifact granularity, and Nix
+  # realizes them in parallel (unlike builtins.fetchurl, which would block the
+  # single-threaded evaluator on each download sequentially).
+  fetchAll = deps: builtins.map (dep: { inherit dep; path = fetchurl { inherit (dep) url sha256; }; }) deps;
 
   fetchDeps = lockFile:
     let
@@ -23,7 +26,6 @@ let
           t = test target;
         in {
           inherit (target) platform scalaVersion;
-          # Each builtins.fetchurl is its own FOD — per-artifact granularity
           compiler = fetchAll target.compiler;
           libraryDependencies = fetchAll target.libraryDependencies;
           nativeCompilerPlugins = if n != null then fetchAll n.compilerPlugins else [];

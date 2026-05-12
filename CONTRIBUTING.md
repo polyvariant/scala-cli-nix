@@ -136,7 +136,7 @@ Both functions pass `--platform` and `--scala-version` flags to `scala-cli packa
 
 #### JVM builds
 
-1. **Per-artifact FODs**: Each `{url, sha256}` entry becomes a `builtins.fetchurl` call. Each is its own Fixed-Output Derivation in the Nix store — updating one dependency only re-downloads that one JAR.
+1. **Per-artifact FODs**: Each `{url, sha256}` entry becomes a `pkgs.fetchurl` call. Each is its own Fixed-Output Derivation in the Nix store — updating one dependency only re-downloads that one JAR. `pkgs.fetchurl` (not `builtins.fetchurl`) is used so Nix schedules downloads in parallel; `builtins.fetchurl` would block the single-threaded evaluator on each artifact sequentially.
 2. **Source filtering**: The `src` is filtered using `lib.cleanSourceWith` to only include files listed in the lockfile's `sources` array, plus everything under each `resourceDirs` entry (so `using resourceDir` keeps working). This means changes to unrelated files (e.g. `README.md`, `flake.nix`) don't trigger a rebuild.
 3. **Deps cache**: All fetched artifacts are symlinked into a Coursier-compatible cache layout (`mkCacheDir`). This is set as `COURSIER_CACHE` so `scala-cli --offline` can resolve dependencies.
 4. **Compilation**: `scala-cli --power package <sources> --server=false --offline --library --platform jvm --scala-version <v>` compiles user code into a small JAR (~4KB) containing only the compiled classes, no bundled dependencies.
