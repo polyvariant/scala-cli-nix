@@ -94,6 +94,7 @@
           example-scala-native-ce = pkgs.callPackage ./examples/scala-native-ce/derivation.nix { };
           example-scala-native-ce-cross = pkgs.callPackage ./examples/scala-native-ce-cross/derivation.nix { };
           example-scala-resources = pkgs.callPackage ./examples/scala-resources/derivation.nix { };
+          example-scala3-native-image = pkgs.callPackage ./examples/scala3-native-image/derivation.nix { };
         in packageTests // {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)
@@ -183,6 +184,16 @@
               touch $out
             else
               echo "FAIL: expected 'hello from embedded resource!', got '$output'"
+              exit 1
+            fi
+          '';
+          example-scala3-native-image = pkgs.runCommand "check-example-scala3-native-image" { } ''
+            output=$(${example-scala3-native-image}/bin/example-scala3-native-image)
+            if [ "$output" = "hello from graalvm native image!" ]; then
+              echo "OK: example-scala3-native-image output matches"
+              touch $out
+            else
+              echo "FAIL: expected 'hello from graalvm native image!', got '$output'"
               exit 1
             fi
           '';

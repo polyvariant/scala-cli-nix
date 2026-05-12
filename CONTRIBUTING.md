@@ -124,8 +124,8 @@ The lock script reconstructs URLs by stripping the cache prefix and re-adding `:
 
 `lib.nix` exposes three functions:
 
-- `buildScalaCliApp { pname, version, src, lockFile, mainClass?, target? }` — builds a single target, returning one derivation. If the lockfile has multiple targets, `target` must be specified (e.g. `target = "jvm"`). If the lockfile has exactly one target, it is selected automatically.
-- `buildScalaCliApps { pname, version, src, lockFile, mainClass? }` — builds all targets, returning an attrset of derivations keyed by target name (dots normalized to underscores, e.g. `{ jvm = <drv>; native = <drv>; }`).
+- `buildScalaCliApp { pname, version, src, lockFile, mainClass?, target?, nativeImage? }` — builds a single target, returning one derivation. If the lockfile has multiple targets, `target` must be specified (e.g. `target = "jvm"`). If the lockfile has exactly one target, it is selected automatically. `nativeImage = true` switches a JVM target to GraalVM native-image output (see below); it is only valid for JVM targets.
+- `buildScalaCliApps { pname, version, src, lockFile, mainClass?, nativeImage? }` — builds all targets, returning an attrset of derivations keyed by target name (dots normalized to underscores, e.g. `{ jvm = <drv>; native = <drv>; }`). `nativeImage` applies to every JVM target in the set.
 - `collectChecks packages` — flattens an attrset of packages into a checks-shaped attrset by reading each package's `passthru.tests`. Each `<pkgName>` contributes one entry per test, named `<pkgName>-<testName>`. Packages without `passthru.tests` contribute nothing. Used as `checks.<system> = pkgs.scala-cli-nix.collectChecks self.packages.<system>;`.
 
 Each derivation returned by `buildScalaCliApp(s)` carries `passthru.tests` — an attrset (currently `{ test = <drv>; }`) of test-runner derivations. The test derivation runs `scala-cli test --offline --server=false` against the project's test sources using a deps cache built from the lockfile's `test.libraryDependencies`. Tests are skipped (the attrset is empty) when the lockfile has no `test` section for that target. The `init` command's generated flake wires every package's `passthru.tests` into `checks` via `collectChecks` so `nix flake check` runs them; users with an existing `flake.nix` get the same one-liner in the printed instructions.
@@ -142,6 +142,18 @@ Both functions pass `--platform` and `--scala-version` flags to `scala-cli packa
 4. **Compilation**: `scala-cli --power package <sources> --server=false --offline --library --platform jvm --scala-version <v>` compiles user code into a small JAR (~4KB) containing only the compiled classes, no bundled dependencies.
 5. **Main class discovery**: Unless `mainClass` is explicitly passed, `scala-cli --power run --main-class-list <sources> --server=false --offline` is run inside the sandbox to find the main class. If there isn't exactly one, the build fails with an error asking the user to pass `mainClass` explicitly.
 6. **Wrapper**: `makeWrapper` creates an executable that runs `java -cp <all library JARs>:<compiled JAR> <mainClass>`. The classpath references individual Nix store paths — no duplication, each dep independently cacheable.
+
+#### GraalVM native-image builds (JVM targets)
+
+When `nativeImage = true` is passed to `buildScalaCliApp(s)`, a JVM target is built as a GraalVM native image instead of a JAR + JVM wrapper:
+
+1. **Deps cache**: Same as the JVM build path — compiler + library JARs/POMs are symlinked into a Coursier cache.
+2. **GraalVM**: nixpkgs' `graalvmPackages.graalvm-ce` is provided as a build input. Its path is passed to scala-cli via `--java-home` so scala-cli does **not** try to coursier-fetch a GraalVM distribution (which would fail in the sandbox).
+3. **Compilation + linking**: `scala-cli --power package <sources> --server=false --offline --native-image --java-home <graalvm> --platform jvm --scala-version <v>` compiles user code, resolves deps from the offline cache, and invokes `native-image` to produce a single binary. scala-cli's bundled reflection/resource configs (e.g. for the Scala 3 reflection machinery) are applied automatically — there's no need to maintain a `reflect-config.json` for stdlib usage.
+4. **No wrapper**: The output is a native binary placed directly at `$out/bin/<pname>`. No JVM at runtime.
+5. **Caveats**: `native-image` is slow and memory-hungry, so JVM-target builds with `nativeImage = true` are noticeably slower than the regular JVM build. App-specific reflection (e.g. Jackson, custom proxies) still needs user-supplied configs — pass them via scala-cli's `using` directives (`//> using packaging.graalvmArgs ...`) so they end up in the build.
+
+`nativeImage = true` is rejected on Scala Native targets — Scala Native already produces a native binary via LLVM.
 
 #### Scala Native builds
 
@@ -219,6 +231,7 @@ examples/
   scala-native-ce/     # Scala Native + cats-effect example
   scala-native-ce-cross/  # Cross JVM+Native example (cats-effect)
   scala-resources/        # Cross JVM+Native example using //> using resourceDir
+  scala3-native-image/    # JVM target built as a GraalVM native image (nativeImage = true)
 ```
 
 ### Running checks

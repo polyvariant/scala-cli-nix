@@ -1,4 +1,4 @@
-{ scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib, clang, which }:
+{ scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib, clang, which, graalvmPackages }:
 let
   supportedVersion = 8;
 
@@ -218,6 +218,34 @@ let
       '';
     }) "JVM");
 
+  buildNativeImageApp = { pname, version, src, sources, resourceDirs, fetched, mainClass, attrOverrides }:
+    let
+      inherit (prepareSources sources resourceDirs src) sourceArgs;
+      allDeps = fetched.compiler ++ fetched.libraryDependencies;
+      depsCache = mkCacheDir "scala-cli-deps-${pname}" allDeps;
+      graalvm = graalvmPackages.graalvm-ce;
+      tests = mkTests { inherit pname version src sources resourceDirs fetched attrOverrides; };
+    in stdenv.mkDerivation (attrOverrides ({
+      inherit pname version;
+      dontUnpack = true;
+      buildInputs = [ scala-cli graalvm ];
+      passthru = { inherit tests; };
+      meta.mainProgram = pname;
+
+      COURSIER_CACHE = depsCache;
+
+      buildPhase = scalaCliEnvSetup + ''
+        mkdir -p $out/bin
+        scala-cli --power package ${sourceArgs} --server=false --offline --native-image \
+          --java-home ${graalvm} \
+          --platform jvm \
+          --scala-version ${fetched.scalaVersion} \
+          ${lib.optionalString (mainClass != null) "--main-class ${mainClass}"} \
+          -o $out/bin/${pname}
+      '';
+      installPhase = "true";
+    }) "JVM");
+
   buildNativeApp = { pname, version, src, sources, resourceDirs, fetched, attrOverrides }:
     let
       inherit (prepareSources sources resourceDirs src) sourceArgs;
@@ -245,9 +273,14 @@ let
       installPhase = "true";
     }) "Native");
 
-  buildTarget = { pname, version, src, sources, resourceDirs, targetFetched, mainClass ? null, attrOverrides }:
+  buildTarget = { pname, version, src, sources, resourceDirs, targetFetched, mainClass ? null, nativeImage ? false, attrOverrides }:
     if targetFetched.platform == "Native"
-    then buildNativeApp { inherit pname version src sources resourceDirs attrOverrides; fetched = targetFetched; }
+    then
+      assert lib.assertMsg (!nativeImage)
+        "scala-cli-nix: nativeImage = true is only valid for JVM targets (this target is Scala Native)";
+      buildNativeApp { inherit pname version src sources resourceDirs attrOverrides; fetched = targetFetched; }
+    else if nativeImage
+    then buildNativeImageApp { inherit pname version src sources resourceDirs mainClass attrOverrides; fetched = targetFetched; }
     else buildJvmApp { inherit pname version src sources resourceDirs mainClass attrOverrides; fetched = targetFetched; };
 
   # Normalize dots to underscores for Nix attribute name ergonomics
@@ -271,14 +304,14 @@ in {
 
   # Build all targets from a lockfile, returning an attrset keyed by target name
   # e.g. { jvm = <drv>; native = <drv>; } or { jvm-3_6_4 = <drv>; native-3_6_4 = <drv>; }
-  buildScalaCliApps = { pname, version, src, lockFile, mainClass ? null, attrOverrides ? (attrs: _platform: attrs) }:
+  buildScalaCliApps = { pname, version, src, lockFile, mainClass ? null, nativeImage ? false, attrOverrides ? (attrs: _platform: attrs) }:
     let
       fetched = fetchDeps lockFile;
     in builtins.listToAttrs (
       builtins.map (key:
         { name = nixKey key;
           value = buildTarget {
-            inherit pname version src mainClass attrOverrides;
+            inherit pname version src mainClass nativeImage attrOverrides;
             sources = fetched.sources;
             resourceDirs = fetched.resourceDirs;
             targetFetched = fetched.targets.${key};
@@ -290,7 +323,7 @@ in {
   # Build a single target from a lockfile.
   # If the lockfile has exactly one target, builds it.
   # If it has multiple targets, `target` must be specified (e.g. target = "jvm").
-  buildScalaCliApp = { pname, version, src, lockFile, mainClass ? null, target ? null, attrOverrides ? (attrs: _platform: attrs) }:
+  buildScalaCliApp = { pname, version, src, lockFile, mainClass ? null, target ? null, nativeImage ? false, attrOverrides ? (attrs: _platform: attrs) }:
     let
       fetched = fetchDeps lockFile;
       targetNames = builtins.attrNames fetched.targets;
@@ -301,7 +334,7 @@ in {
         then builtins.head targetNames
         else builtins.throw "scala-cli-nix: lockfile has multiple targets (${builtins.concatStringsSep ", " targetNames}). Pass `target` to buildScalaCliApp or use buildScalaCliApps.";
     in buildTarget {
-      inherit pname version src mainClass attrOverrides;
+      inherit pname version src mainClass nativeImage attrOverrides;
       sources = fetched.sources;
       resourceDirs = fetched.resourceDirs;
       targetFetched = fetched.targets.${resolvedTarget};

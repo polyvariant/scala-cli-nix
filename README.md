@@ -65,6 +65,30 @@ scala-cli-nix.buildScalaCliApps {
 
 For single-target projects, `buildScalaCliApp` (singular) returns a single derivation as before.
 
+## GraalVM native image
+
+JVM targets can be built as a single statically-linkable binary via GraalVM native-image. Pass `nativeImage = true`:
+
+```nix
+{ scala-cli-nix }:
+
+scala-cli-nix.buildScalaCliApp {
+  pname = "my-app";
+  version = "0.1.0";
+  src = ./.;
+  lockFile = ./scala.lock.json;
+  nativeImage = true;
+}
+```
+
+The build uses nixpkgs' `graalvmPackages.graalvm-ce` and runs scala-cli's `--native-image` pipeline inside the sandbox (no network, no coursier-fetched GraalVM). scala-cli's bundled reflection configs cover the Scala 3 stdlib out of the box; app-specific reflection (Jackson, custom proxies, etc.) still needs user-supplied configs via `//> using packaging.graalvmArgs ...`.
+
+Tradeoffs to be aware of:
+
+- `native-image` is slow and memory-hungry, so builds take noticeably longer than regular JVM builds.
+- Rebuilds are all-or-nothing — per-artifact FODs still apply to dependency fetching, but linking produces one binary.
+- `nativeImage = true` is rejected on Scala Native targets (those already produce a native binary via LLVM).
+
 ## How it works
 
 1. **`scala-cli-nix lock`** runs outside Nix (with network access):
