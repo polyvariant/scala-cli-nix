@@ -7,6 +7,7 @@
 //> using dep co.fs2::fs2-io::3.13.0
 //> using dep com.github.alexarchambault::case-app::2.1.0
 //> using dep org.scala-lang.modules::scala-xml::2.4.0
+//> using dep org.http4s::http4s-ember-client::0.23.34
 
 import cats.effect.ExitCode
 import cats.effect.IO
@@ -27,9 +28,11 @@ import io.circe.parser.parse as parseJson
 import io.circe.syntax.*
 import java.io.File
 import java.net.URI
-import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.util.Base64
 import java.util.jar.JarFile
+import org.http4s.{Request, Status, Uri}
+import org.http4s.client.Client
+import org.http4s.ember.client.EmberClientBuilder
 import scala.jdk.CollectionConverters.*
 import scala.xml.{Node, NodeSeq, XML}
 
@@ -332,8 +335,8 @@ object Repos {
   *   - Only `http(s)://` URLs — Ivy / local-file resolvers can't be expressed
   *     through `coursierapi.MavenRepository`, and local user caches aren't
   *     reproducible inputs anyway.
-  *   - Maven Central is dropped because Coursier's defaults already include
-  *     it; re-adding it would log a duplicate.
+  *   - Maven Central is dropped because Coursier's defaults already include it;
+  *     re-adding it would log a duplicate.
   *   - Order is preserved, duplicates removed.
   */
 def extraRepoUrlsFromResolvers(resolvers: List[String]): List[String] = {
@@ -1558,23 +1561,26 @@ private def parseAppDescriptor(
 private def fetchAppFromBuiltin(
     raw: String,
     name: String
-): IO[Option[ContribChannelApp]] = {
+)(using client: Client[IO]): IO[Option[ContribChannelApp]] = {
   val url = s"$raw/$name.json"
-  IO.blocking {
-    val client = HttpClient.newHttpClient()
-    val req = HttpRequest
-      .newBuilder()
-      .uri(URI.create(url))
-      .GET()
-      .build()
-    val resp = client.send(req, HttpResponse.BodyHandlers.ofString())
-    resp.statusCode() match {
-      case 200 => Some(resp.body())
-      case 404 => None
-      case sc  =>
-        throw new RuntimeException(
-          s"Failed to fetch app descriptor $name from $url: HTTP $sc"
-        )
+  IO.fromEither(
+    Uri
+      .fromString(url)
+      .leftMap(f =>
+        new RuntimeException(s"Invalid channel URL $url: ${f.message}")
+      )
+  ).flatMap { uri =>
+    client.run(Request[IO](uri = uri)).use { resp =>
+      resp.status match {
+        case Status.Ok       => resp.bodyText.compile.string.map(Some(_))
+        case Status.NotFound => IO.pure(None)
+        case sc              =>
+          IO.raiseError(
+            new RuntimeException(
+              s"Failed to fetch app descriptor $name from $url: HTTP ${sc.code}"
+            )
+          )
+      }
     }
   }.flatMap {
     case None       => IO.pure(None)
@@ -1650,7 +1656,7 @@ private def fetchAppFromMaven(
 def fetchAppFromChannel(
     channel: Channel,
     name: String
-)(using Repos): IO[Option[ContribChannelApp]] =
+)(using Repos, Client[IO]): IO[Option[ContribChannelApp]] =
   channel match {
     case Channel.Builtin(_, raw)   => fetchAppFromBuiltin(raw, name)
     case Channel.Maven(org, aname) => fetchAppFromMaven(org, aname, name)
@@ -1665,7 +1671,7 @@ def lookupApp(
     name: String,
     includeContrib: Boolean,
     userChannels: List[Channel]
-)(using Repos): IO[ContribChannelApp] = {
+)(using Repos, Client[IO]): IO[ContribChannelApp] = {
   val channels =
     Channel.Default ::
       (if (includeContrib) List(Channel.Contrib) else Nil) :::
@@ -1817,7 +1823,7 @@ def computeCoursierAppLock(
 def lockCoords(
     opts: LockCoordsOptions,
     appName: Option[String]
-): IO[ExitCode] = withHashCache {
+)(using Client[IO]): IO[ExitCode] = withHashCache {
   given Repos = Repos(opts.repository.distinct)
   for {
     _ <- opts.repository.distinct.traverse_(url =>
@@ -1908,9 +1914,14 @@ private def writeCoordsLock(
   * here because case-app's `Command.run` is sync and `Unit`-returning, while
   * our commands are written as `IO`. Any uncaught error short-circuits to a
   * non-zero exit.
+  *
+  * A single Ember HTTP client is built here and made available as a contextual
+  * `Client[IO]` to the program — commands that don't hit the network simply
+  * never touch it; the connection pool is torn down on exit either way.
   */
-private def runIO(program: IO[ExitCode]): Unit = {
-  val code = program.unsafeRunSync()
+private def runIO(program: Client[IO] ?=> IO[ExitCode]): Unit = {
+  val resource = EmberClientBuilder.default[IO].build
+  val code = resource.use(client => program(using client)).unsafeRunSync()
   if (code != ExitCode.Success) sys.exit(code.code)
 }
 
