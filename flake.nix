@@ -173,24 +173,27 @@
           # signature changed between 2.x). Running the binary verifies the
           # classpath only carries the resolved winner.
           example-scala3-shadowed-deps = mkOutputCheck { name = "example-scala3-shadowed-deps"; pkg = example-scala3-shadowed-deps; expected = "hello from shadowed-deps! grandchildren=2"; };
-          # Coursier-app checks. Pure smoke tests: the wrapper has to launch
-          # the JVM with the right classpath / main class and exit 0 on a
-          # benign flag. Metals' `--help` is empty (LSP server first, CLI
-          # second) but still exits 0; scalafmt prints "scalafmt <version>";
-          # smithy4s' `--help` prints a usage summary we grep for.
-          example-metals = pkgs.runCommand "check-example-metals" { } ''
+          # Coursier-app checks. Each app is exposed twice: the package
+          # itself (so `nix flake check` reports a build failure distinctly
+          # from a runtime failure) and a `-test` smoke test that launches
+          # the wrapper on a benign flag. Metals' `--help` is empty (LSP
+          # server first, CLI second) but still exits 0; scalafmt prints
+          # "scalafmt <version>"; smithy4s' bare invocation prints a
+          # Decline usage banner we grep for.
+          inherit example-metals example-scalafmt example-smithy4s;
+          example-metals-test = pkgs.runCommand "check-example-metals" { } ''
             ${example-metals}/bin/metals --help > /dev/null
             echo "OK: metals --help launched"
             touch $out
           '';
-          example-scalafmt = pkgs.runCommand "check-example-scalafmt" { } ''
+          example-scalafmt-test = pkgs.runCommand "check-example-scalafmt" { } ''
             output=$(${example-scalafmt}/bin/scalafmt --version)
             case "$output" in
               "scalafmt 3.11.1") echo "OK: scalafmt version $output"; touch $out ;;
               *) echo "FAIL: unexpected scalafmt --version output: $output"; exit 1 ;;
             esac
           '';
-          example-smithy4s = pkgs.runCommand "check-example-smithy4s" { } ''
+          example-smithy4s-test = pkgs.runCommand "check-example-smithy4s" { } ''
             # smithy4s-codegen-cli prints a Decline usage summary on bare
             # invocation (no args). Exit code is 1 but the wrapper itself
             # had to launch successfully for us to see the usage banner.
