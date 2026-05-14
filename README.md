@@ -89,6 +89,29 @@ Tradeoffs to be aware of:
 - Rebuilds are all-or-nothing — per-artifact FODs still apply to dependency fetching, but linking produces one binary.
 - `nativeImage = true` is rejected on Scala Native targets (those already produce a native binary via LLVM).
 
+## Assembly JAR
+
+By default a JVM target is built as a thin user JAR with each dependency referenced from its own Nix store path. For distribution it can be easier to ship a single fat JAR; pass `packaging = "assembly"` to bundle user code and all transitive deps into one JAR:
+
+```nix
+{ scala-cli-nix }:
+
+scala-cli-nix.buildScalaCliApp {
+  pname = "my-app";
+  version = "0.1.0";
+  src = ./.;
+  lockFile = ./scala.lock.json;
+  packaging = "assembly";
+}
+```
+
+The build invokes `scala-cli package --assembly`, which produces an executable JAR with a bash preamble. `makeWrapper` then wraps it at `$out/bin/<pname>`, prepending the pinned `openjdk/bin` to PATH so the preamble finds the right JVM.
+
+Tradeoffs:
+
+- Per-artifact granularity is lost for the *output* — every dep change rebuilds the fat JAR. Inputs (the fetchurl FODs) are still cached per-artifact, so dep fetching is unaffected.
+- `packaging = "assembly"` is JVM-only and mutually exclusive with `nativeImage = true`.
+
 ## How it works
 
 1. **`scala-cli-nix lock`** runs outside Nix (with network access):
