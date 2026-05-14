@@ -10,3 +10,4 @@
 - [x] Cache the artifact hashing?
 - [ ] Can we name the output binary according to the main class rather than the project?
 - [x] Figure out a way to have multiple lockfiles for crosscompilation
+- [ ] JS platform support. Plan lives in the `js-support` session. Upstream first: extend scala-cli's `export --json` with a `jsOptions` block (scalaJsVersion, esVersion, moduleKind, linkerDependencies, linkerBinaryUrls keyed by Nix system) mirroring `nativeOptions`. Then in scala-cli-nix: bump fork pin, add `JsLockDeps` to lockfile (schema v9), JS branch in `computeTargetLockContent`, `buildJsApp`/`buildJsTest` in lib.nix materializing both regular + archive Coursier caches, multi-system linker binary lookup, optional node wrapper toggle (default on, off emits just `$out/share/<pname>.js`). Tests run via `scala-cli test --platform js` against locked JARs. New `examples/scala3-js` + cross JVM+Native+JS example.
