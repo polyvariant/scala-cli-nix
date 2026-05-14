@@ -9,5 +9,9 @@
 - [x] Adding checks based on tests should be done via a library function, and we should do it in both new and existing users' flakes
 - [x] Cache the artifact hashing?
 - [ ] Can we name the output binary according to the main class rather than the project?
+- [ ] `lock-coords`: auto-discover `--main-class` from coords (e.g. by reading the artifact's `META-INF/MANIFEST.MF` `Main-Class` attribute), so the raw-coords path doesn't force `--main-class` for single-jar apps.
+- [ ] `lock-coords`: support arbitrary `--channel ORG:NAME` (a Maven coord of the channel artifact itself). Currently only the two built-in channels (default + `--contrib`) are wired in.
+- [ ] `buildCoursierApp`: GraalVM native-image variant (`nativeImage = true`), analogous to the scala-cli path. Likely needs reflection configs from the user since there is no scala-cli compile step to pick them up from `using` directives.
+- [ ] `lock-coords`: per-coord scala-binary overrides. Currently a single `--scala-binary` applies to all `::` coords; mixed-binary descriptors (rare) can't be expressed.
 - [x] Figure out a way to have multiple lockfiles for crosscompilation
 - [ ] JS platform support. Plan lives in the `js-support` session. Upstream first: extend scala-cli's `export --json` with a `jsOptions` block (scalaJsVersion, esVersion, moduleKind, linkerDependencies, linkerBinaryUrls keyed by Nix system) mirroring `nativeOptions`. Then in scala-cli-nix: bump fork pin, add `JsLockDeps` to lockfile (schema v9), JS branch in `computeTargetLockContent`, `buildJsApp`/`buildJsTest` in lib.nix materializing both regular + archive Coursier caches, multi-system linker binary lookup, optional node wrapper toggle (default on, off emits just `$out/share/<pname>.js`). Tests run via `scala-cli test --platform js` against locked JARs. New `examples/scala3-js` + cross JVM+Native+JS example.

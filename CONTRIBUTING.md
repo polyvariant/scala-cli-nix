@@ -226,6 +226,45 @@ The generated flake uses the overlay pattern so consumers just do `pkgs.callPack
 
 `init --ref <value>` pins the generated `scala-cli-nix.url`. The value is auto-classified: a 40-char lowercase hex string becomes `?rev=<value>`, anything else becomes `?ref=<value>`. Empty or omitted leaves the URL bare (`github:scala-nix/scala-cli-nix`, floating on default branch). Useful when scaffolding against a feature branch or a known-good rev.
 
+### `scala-cli-nix lock-coords` (coursier-app path)
+
+A second, narrower lockfile shape: package a JVM app straight from Coursier coordinates, without any scala-cli source files. Useful for redistributing existing apps like `metals`, `scalafmt`, or anything in the coursier app channels.
+
+Inputs accepted:
+
+- A positional app name. The CLI looks it up in the default channel (https://github.com/coursier/apps under `apps/resources/<name>.json`); with `--contrib`, it also searches the contrib channel (`apps-contrib/resources/<name>.json`). This mirrors `cs install --contrib NAME`. The descriptor's `dependencies` and `mainClass` drive the lock.
+- One or more `--dep org:name:version` (or `org::name::version` Scala-suffixed), plus `--main-class CLASS`. Channel-free path.
+
+`--scala-binary <ver>` (default `3.3.0`) selects how `::`/`:::` coordinates expand — set it to `2.13.12` for apps that only ship 2.13 artifacts (e.g. smithy4s).
+
+Both modes share the resolution machinery used by `lock`: `coursierapi.Fetch` resolves transitively, SHA-256 is computed via `java.security.MessageDigest`, and the per-user hash cache is reused.
+
+The resulting lockfile uses a discriminated shape — `kind = "coursier-app"` at the top level — so the existing scala-cli format (implicit `kind = "scala-cli"`) is untouched. Only JARs are recorded; POMs are dropped because the build side doesn't shell out to scala-cli's offline resolver for this path, so they would be dead weight.
+
+```json
+{
+  "version": 8,
+  "kind": "coursier-app",
+  "mainClass": "scala.meta.metals.Main",
+  "javaOptions": [],
+  "dependencies": [
+    { "url": "https://repo1.maven.org/.../foo-1.0.jar", "sha256": "..." }
+  ]
+}
+```
+
+### `buildCoursierApp` (build side)
+
+`lib.nix` exposes `buildCoursierApp { pname, version, lockFile, mainClass ? null, javaOptions ? [] }`. It asserts `kind = "coursier-app"`, fetches each JAR via `pkgs.fetchurl`, and writes a hand-rolled shell wrapper at `$out/bin/<pname>` that exec's `java -cp <classpath> <mainClass>`. No scala-cli at build time, no compilation step — this path is fast.
+
+`mainClass` defaults to the value baked into the lockfile by `lock-coords`. `javaOptions` from the lockfile (e.g. coursier channel descriptors that ship `-D...` flags) are placed before any caller-supplied ones.
+
+#### Why a hand-rolled wrapper, not `makeWrapper`
+
+JVM resolves `user.home` from the OS user database (macOS) or `/etc/passwd` (Linux), not from `$HOME`. In a Nix sandbox there is no user record, so the JVM lands on `/var/empty` (macOS) or `/homeless-shelter` (Linux). Apps that write under `user.home` — metals' macOS log dir, coursier's cache, etc. — then crash on startup.
+
+`makeWrapper` would bake `-Duser.home=...` at build time, but we don't have a writable path until runtime. The wrapper checks `$HOME` for writability at exec time, falling back to `$TMPDIR` or `/tmp`. That keeps normal user invocations on `$HOME` and rescues sandbox / odd CI environments without forcing the user to set anything.
+
 ## Development
 
 ### Project structure
@@ -258,6 +297,9 @@ examples/
   scala-native-docker/            # Wraps the scala-native binary into a dockerTools.buildLayeredImage (Linux-only)
   scala3-jvm-docker/              # Wraps the scala3 JVM app (wrapper + per-artifact JARs end up in the image)
   scala3-native-image-docker/     # Wraps the GraalVM native-image binary
+  metals/                         # buildCoursierApp from raw --dep coords (no contrib channel)
+  scalafmt/                       # buildCoursierApp via the default coursier app channel
+  smithy4s/                       # buildCoursierApp via the coursier contrib channel (--contrib, --scala-binary 2.13.12)
 ```
 
 Each `*-docker/` example is a thin `dockerTools.buildLayeredImage` derivation that takes the upstream app as a `callPackage` argument; no Scala source or lockfile of its own. They're wired into the root flake under `lib.optionalAttrs pkgs.stdenv.isLinux` (because `dockerTools` doesn't build on Darwin) so they at least build under `nix flake check` on aarch64-linux. The per-image VM tests (`docker-image-scala-native`, `docker-image-scala3-jvm`, `docker-image-scala3-native-image`, each built via the `mkDockerImageTest` helper) are further gated to `x86_64-linux` because `pkgs.testers.runNixOSTest` needs KVM of the matching arch, and that's the only Linux arch we count on for CI builders. Each VM test runs a NixOS guest with dockerd that loads one image and asserts the container's stdout — covering the full pattern from the README's Docker section.

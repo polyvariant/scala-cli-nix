@@ -117,6 +117,15 @@
           example-scala-test-scalatest = pkgs.callPackage ./examples/scala-test-scalatest/derivation.nix { };
           example-scala-test-ziotest = pkgs.callPackage ./examples/scala-test-ziotest/derivation.nix { };
 
+          # Coursier-app examples (built by `buildCoursierApp` — no scala-cli
+          # at build time). `metals` was locked from raw `--dep` coords;
+          # `scalafmt` was locked via the default channel
+          # (`lock-coords scalafmt`); `smithy4s` was locked via the contrib
+          # channel (`lock-coords smithy4s --contrib`).
+          example-metals = pkgs.callPackage ./examples/metals/derivation.nix { };
+          example-scalafmt = pkgs.callPackage ./examples/scalafmt/derivation.nix { };
+          example-smithy4s = pkgs.callPackage ./examples/smithy4s/derivation.nix { };
+
           # Build a runCommand that runs `<pkg>/bin/<binName>` and asserts its
           # stdout equals `expected`. `binName` defaults to the check key,
           # which holds for every example whose pname matches its check name;
@@ -164,6 +173,33 @@
           # signature changed between 2.x). Running the binary verifies the
           # classpath only carries the resolved winner.
           example-scala3-shadowed-deps = mkOutputCheck { name = "example-scala3-shadowed-deps"; pkg = example-scala3-shadowed-deps; expected = "hello from shadowed-deps! grandchildren=2"; };
+          # Coursier-app checks. Pure smoke tests: the wrapper has to launch
+          # the JVM with the right classpath / main class and exit 0 on a
+          # benign flag. Metals' `--help` is empty (LSP server first, CLI
+          # second) but still exits 0; scalafmt prints "scalafmt <version>";
+          # smithy4s' `--help` prints a usage summary we grep for.
+          example-metals = pkgs.runCommand "check-example-metals" { } ''
+            ${example-metals}/bin/metals --help > /dev/null
+            echo "OK: metals --help launched"
+            touch $out
+          '';
+          example-scalafmt = pkgs.runCommand "check-example-scalafmt" { } ''
+            output=$(${example-scalafmt}/bin/scalafmt --version)
+            case "$output" in
+              "scalafmt 3.11.1") echo "OK: scalafmt version $output"; touch $out ;;
+              *) echo "FAIL: unexpected scalafmt --version output: $output"; exit 1 ;;
+            esac
+          '';
+          example-smithy4s = pkgs.runCommand "check-example-smithy4s" { } ''
+            # smithy4s-codegen-cli prints a Decline usage summary on bare
+            # invocation (no args). Exit code is 1 but the wrapper itself
+            # had to launch successfully for us to see the usage banner.
+            output=$(${example-smithy4s}/bin/smithy4s 2>&1 || true)
+            case "$output" in
+              *"smithy4s generate"*) echo "OK: smithy4s usage banner printed"; touch $out ;;
+              *) echo "FAIL: unexpected smithy4s output:"; echo "$output"; exit 1 ;;
+            esac
+          '';
         } // (
           # Cross JVM+Native test-framework examples. Each framework gets its
           # own example built for both platforms; for every (framework,

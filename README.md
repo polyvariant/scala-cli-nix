@@ -65,6 +65,44 @@ scala-cli-nix.buildScalaCliApps {
 
 For single-target projects, `buildScalaCliApp` (singular) returns a single derivation as before.
 
+## Packaging existing apps from Coursier coordinates
+
+`scala-cli-nix` can also lock and build an app that has no Scala sources of its own — just published Maven coordinates. Useful for redistributing tools like `metals`, `scalafmt`, or anything in the coursier app channels.
+
+There are two ways to point the locker at the coords. From a coursier app channel:
+
+```bash
+# Default channel (https://github.com/coursier/apps, apps/resources/<name>.json)
+scala-cli-nix lock-coords scalafmt
+
+# Contrib channel (apps-contrib/resources/<name>.json) — same flag as `cs install --contrib`
+scala-cli-nix lock-coords smithy4s --contrib --scala-binary 2.13.12
+```
+
+Or with raw coords, when there is no channel descriptor (or you want to pin a specific version):
+
+```bash
+scala-cli-nix lock-coords \
+  --dep org.scalameta::metals:1.5.3 \
+  --main-class scala.meta.metals.Main
+```
+
+`--scala-binary` (default `3.3.0`) decides how `::` / `:::` Scala-suffixed coordinates expand — bump it to `2.13.12` for apps that only ship 2.13 artifacts.
+
+Both forms write a `scala.lock.json` with `kind = "coursier-app"`. On the Nix side, `buildCoursierApp` consumes it:
+
+```nix
+{ scala-cli-nix }:
+
+scala-cli-nix.buildCoursierApp {
+  pname = "metals";
+  version = "1.5.3";
+  lockFile = ./scala.lock.json;
+}
+```
+
+The result is a small shell wrapper at `$out/bin/<pname>` that runs `java -cp ... <mainClass>`. No scala-cli compile step, no Coursier cache layout — just `pkgs.fetchurl` per JAR and a wrapper script.
+
 ## GraalVM native image
 
 JVM targets can be built as a single statically-linkable binary via GraalVM native-image. Pass `nativeImage = true`:

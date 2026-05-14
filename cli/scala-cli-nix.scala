@@ -26,6 +26,8 @@ import io.circe.{Codec, Decoder, Json, Printer}
 import io.circe.parser.parse as parseJson
 import io.circe.syntax.*
 import java.io.File
+import java.net.URI
+import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.util.Base64
 import scala.jdk.CollectionConverters.*
 import scala.xml.{Node, NodeSeq, XML}
@@ -62,6 +64,24 @@ case class LockFile(
     sources: List[String],
     resourceDirs: List[String],
     targets: Map[String, TargetLock]
+) derives Codec.AsObject
+
+/** Lockfile shape for the `lock-coords` path: an app packaged straight from
+  * Coursier coordinates, no scala-cli sources involved. Discriminated from the
+  * scala-cli shape by `kind = "coursier-app"` at the top level; existing files
+  * without `kind` are still treated as `kind = "scala-cli"` by the build side
+  * (preserves backwards compatibility — no version bump needed).
+  *
+  * Only JARs are recorded — we don't shell out to scala-cli at build time for
+  * this kind, so POMs (needed solely by scala-cli's offline resolver) would be
+  * dead weight.
+  */
+case class CoursierAppLock(
+    version: Int,
+    kind: String,
+    mainClass: String,
+    javaOptions: List[String],
+    dependencies: List[ArtifactEntry]
 ) derives Codec.AsObject
 
 // --- JSON model (scala-cli export, only the fields we use) ---
@@ -826,6 +846,26 @@ case class InitOptions(
     ref: Option[String] = None
 )
 
+case class LockCoordsOptions(
+    @HelpMessage(
+      "Coursier coordinate (org:name:version or org::name::version). Repeatable."
+    )
+    dep: List[String] = Nil,
+    @HelpMessage(
+      "Also search the contrib channel (io.get-coursier:apps-contrib) when looking up the positional app name. Mirrors `cs install --contrib`."
+    )
+    contrib: Boolean = false,
+    @HelpMessage("Main class for raw --dep mode (required there).")
+    mainClass: Option[String] = None,
+    @HelpMessage(
+      "Scala version used to expand `::` / `:::` coordinates (descriptors and --dep). Default: 3.3.0. Set to 2.13.12 for apps published only for 2.13 (e.g. smithy4s)."
+    )
+    scalaBinary: String = "3.3.0",
+    @HelpMessage("Output lockfile path (default: scala.lock.json).")
+    @Name("o")
+    output: Option[String] = None
+)
+
 // --- Lock command ---
 
 val hashPrinter: Printer = Printer.noSpaces.copy(sortKeys = true)
@@ -1364,6 +1404,246 @@ private def doInit(
   } yield ExitCode.Success
 }
 
+// --- lock-coords command ---
+
+/** Subset of a coursier-apps channel JSON descriptor we actually use. The full
+  * schema lives at https://github.com/coursier/apps — this captures only the
+  * `dependencies`, `mainClass`, and `javaOptions` fields. Other fields like
+  * `repositories`, `properties`, `exclusions` are ignored for v1; we resolve
+  * against Maven Central via the Coursier interface defaults.
+  */
+case class ContribChannelApp(
+    dependencies: List[String],
+    mainClass: Option[String],
+    javaOptions: List[String]
+)
+object ContribChannelApp {
+  given Decoder[ContribChannelApp] = Decoder.instance { c =>
+    for {
+      deps <- c.getOrElse[List[String]]("dependencies")(Nil)
+      mainClass <- c.get[Option[String]]("mainClass")
+      javaOpts <- c.getOrElse[List[String]]("javaOptions")(Nil)
+    } yield ContribChannelApp(deps, mainClass, javaOpts)
+  }
+}
+
+/** A coursier "channel" is a Maven artifact whose resources/ directory holds
+  * `<name>.json` app descriptors. The two well-known channels live in
+  * github.com/coursier/apps. We hard-code the GitHub raw paths instead of
+  * resolving the channel artifact from Maven, which keeps this path
+  * network-light (one HTTP GET per channel, no JAR fetch).
+  *
+  * Default channel: `io.get-coursier:apps` → `apps/resources/<name>.json`.
+  * Contrib channel: `io.get-coursier:apps-contrib` →
+  * `apps-contrib/resources/<name>.json`.
+  */
+enum Channel(val raw: String) {
+  case Default
+      extends Channel(
+        "https://raw.githubusercontent.com/coursier/apps/main/apps/resources"
+      )
+  case Contrib
+      extends Channel(
+        "https://raw.githubusercontent.com/coursier/apps/main/apps-contrib/resources"
+      )
+}
+
+/** Fetch one app descriptor from a specific channel. Returns None on 404 so
+  * callers can fall back to another channel; raises on other HTTP errors.
+  */
+def fetchAppFromChannel(
+    channel: Channel,
+    name: String
+): IO[Option[ContribChannelApp]] = {
+  val url = s"${channel.raw}/$name.json"
+  IO.blocking {
+    val client = HttpClient.newHttpClient()
+    val req = HttpRequest
+      .newBuilder()
+      .uri(URI.create(url))
+      .GET()
+      .build()
+    val resp = client.send(req, HttpResponse.BodyHandlers.ofString())
+    resp.statusCode() match {
+      case 200 => Some(resp.body())
+      case 404 => None
+      case sc  =>
+        throw new RuntimeException(
+          s"Failed to fetch app descriptor $name from $url: HTTP $sc"
+        )
+    }
+  }.flatMap {
+    case None       => IO.pure(None)
+    case Some(body) =>
+      IO.fromEither(
+        parseJson(body)
+          .flatMap(_.as[ContribChannelApp])
+          .leftMap(e =>
+            new RuntimeException(
+              s"Failed to parse $name descriptor from ${channel.raw}: ${e.getMessage}"
+            )
+          )
+      ).map(Some(_))
+  }
+}
+
+/** Look up an app across the configured channels, in order. Matches coursier's
+  * behavior: default channel always searched; contrib channel is added when the
+  * caller passes `--contrib`. The first hit wins.
+  */
+def lookupApp(
+    name: String,
+    includeContrib: Boolean
+): IO[ContribChannelApp] = {
+  val channels =
+    if (includeContrib) List(Channel.Default, Channel.Contrib)
+    else List(Channel.Default)
+  channels
+    .foldLeft(IO.pure(Option.empty[ContribChannelApp])) { (acc, ch) =>
+      acc.flatMap {
+        case found @ Some(_) => IO.pure(found)
+        case None            => fetchAppFromChannel(ch, name)
+      }
+    }
+    .flatMap {
+      case Some(app) => IO.pure(app)
+      case None      =>
+        IO.raiseError(
+          new RuntimeException(
+            if (includeContrib)
+              s"App '$name' not found in default or contrib channel."
+            else
+              s"App '$name' not found in the default channel. Pass --contrib to also search the contrib channel."
+          )
+        )
+    }
+}
+
+/** Parse a coursier coordinate string. Delegates to `Dependency.parse` — it
+  * handles both `org:name:version` and the Scala-suffixed `org::name::version`
+  * / `org:::name:::version` syntaxes. `scalaBinary` picks how the suffix is
+  * expanded (e.g. `_3` vs `_2.13`).
+  */
+def parseCoursierDep(coord: String, scalaBinary: String): Dependency =
+  Dependency.parse(coord, ScalaVersion.of(scalaBinary))
+
+/** Resolve a set of coords transitively, hash all resulting JARs, and produce
+  * the `coursier-app` lockfile content.
+  */
+def computeCoursierAppLock(
+    deps: List[String],
+    mainClass: String,
+    javaOptions: List[String],
+    scalaBinary: String
+)(using HashCache): IO[String] = {
+  val parsedDeps = deps.map(parseCoursierDep(_, scalaBinary))
+  for {
+    _ <- step("Resolving Coursier dependencies...")
+    artifacts <- fetchArtifacts(parsedDeps*)
+    _ <- info(
+      s"Resolved ${C.bold}${artifacts.size}${C.reset} artifacts (transitive)"
+    )
+    _ <- step("Hashing JARs...")
+    jarEntries <- artifacts
+      .filter { case (artifact, _) => artifact.getUrl.endsWith(".jar") }
+      .traverse { case (artifact, file) =>
+        val url = artifact.getUrl
+        val path = Path.fromNioPath(file.toPath)
+        sha256Base64(path).map(hash => ArtifactEntry(url, hash))
+      }
+    sorted = jarEntries.distinctBy(_.url).sortBy(_.url)
+    lock = CoursierAppLock(
+      version = 8,
+      kind = "coursier-app",
+      mainClass = mainClass,
+      javaOptions = javaOptions,
+      dependencies = sorted
+    )
+  } yield lockfilePrinter.print(lock.asJson) + "\n"
+}
+
+def lockCoords(
+    opts: LockCoordsOptions,
+    appName: Option[String]
+): IO[ExitCode] = withHashCache {
+  appName match {
+    case Some(name) =>
+      for {
+        _ <- info(
+          s"Looking up ${C.bold}$name${C.reset} in channels " +
+            (if (opts.contrib) "(default + contrib)..." else "(default)...")
+        )
+        app <- lookupApp(name, opts.contrib)
+        mainClass <- app.mainClass match {
+          // Descriptors mark optional mainClass fields with a trailing `?`
+          // (e.g. scalafmt's "org.scalafmt.cli.Cli?"); we just strip it.
+          case Some(mc) => IO.pure(mc.stripSuffix("?"))
+          case None     =>
+            IO.raiseError(
+              new RuntimeException(
+                s"App $name has no mainClass field in its descriptor. Use raw `--dep ... --main-class ...` instead."
+              )
+            )
+        }
+        // Descriptor's deps win; CLI --dep is treated as additive.
+        deps = app.dependencies ++ opts.dep
+        content <- computeCoursierAppLock(
+          deps,
+          mainClass,
+          app.javaOptions,
+          opts.scalaBinary
+        )
+        _ <- writeCoordsLock(opts.output, content)
+      } yield ExitCode.Success
+
+    case None =>
+      if (opts.dep.isEmpty)
+        error(
+          "Pass an app name (e.g. `scala-cli-nix lock-coords smithy4s --contrib`) or `--dep org:name:version --main-class CLASS`."
+        ).as(ExitCode.Error)
+      else
+        opts.mainClass match {
+          case None =>
+            error(
+              "--main-class is required when using --dep (auto-discovery from coords isn't implemented yet)."
+            ).as(ExitCode.Error)
+          case Some(mc) =>
+            for {
+              content <- computeCoursierAppLock(
+                opts.dep,
+                mc,
+                Nil,
+                opts.scalaBinary
+              )
+              _ <- writeCoordsLock(opts.output, content)
+            } yield ExitCode.Success
+        }
+  }
+}
+
+private def writeCoordsLock(
+    outputOpt: Option[String],
+    content: String
+): IO[Unit] =
+  for {
+    cwd <- Files[IO].currentWorkingDirectory
+    target = outputOpt match {
+      case Some(p) =>
+        val path = Path(p)
+        if (path.isAbsolute) path else cwd / p
+      case None => cwd / "scala.lock.json"
+    }
+    existing <- Files[IO]
+      .exists(target)
+      .ifM(readFile(target), IO.pure(""))
+    _ <-
+      if (existing == content) info("Lock is up to date.")
+      else
+        step(s"Writing ${target.fileName}...") *>
+          writeFile(target, content) *>
+          success(s"Wrote ${C.bold}${target.fileName}${C.reset}")
+  } yield ()
+
 // --- Main ---
 
 /** Run an `IO[ExitCode]` and exit the JVM with the resulting code. We bridge
@@ -1379,7 +1659,8 @@ private def runIO(program: IO[ExitCode]): Unit = {
 object ScalaCliNix extends CommandsEntryPoint {
   override def progName: String = "scala-cli-nix"
   override def description: String = "Nix packaging for scala-cli apps"
-  override def commands: Seq[Command[?]] = Seq(InitCommand, LockCommand)
+  override def commands: Seq[Command[?]] =
+    Seq(InitCommand, LockCommand, LockCoordsCommand)
   override def enableCompleteCommand: Boolean = true
   override def enableCompletionsCommand: Boolean = true
 
@@ -1393,5 +1674,21 @@ object ScalaCliNix extends CommandsEntryPoint {
     override def name: String = "lock"
     override def run(options: LockOptions, args: RemainingArgs): Unit =
       runIO(lock(args.remaining.toList))
+  }
+
+  private object LockCoordsCommand extends Command[LockCoordsOptions] {
+    override def name: String = "lock-coords"
+    override def run(options: LockCoordsOptions, args: RemainingArgs): Unit = {
+      val positional = args.remaining.toList
+      val appName = positional match {
+        case Nil        => None
+        case one :: Nil => Some(one)
+        case many       =>
+          throw new RuntimeException(
+            s"lock-coords takes at most one positional app name; got ${many.mkString(", ")}"
+          )
+      }
+      runIO(lockCoords(options, appName))
+    }
   }
 }

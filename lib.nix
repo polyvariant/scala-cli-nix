@@ -1,4 +1,4 @@
-{ scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib, clang, which, graalvmPackages, fetchurl }:
+{ scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib, clang, which, graalvmPackages, fetchurl, bash }:
 let
   supportedVersion = 8;
 
@@ -7,17 +7,25 @@ let
   # single-threaded evaluator on each download sequentially).
   fetchAll = deps: builtins.map (dep: { inherit dep; path = fetchurl { inherit (dep) url sha256; }; }) deps;
 
+  # Common version + kind check shared by both lockfile loaders.
+  checkLockVersion = lockVersion:
+    if lockVersion != supportedVersion
+    then builtins.throw "scala-cli-nix: unsupported lockfile version ${builtins.toString lockVersion} (expected ${builtins.toString supportedVersion}). Re-run 'scala-cli-nix lock' (or 'scala-cli-nix lock-coords') to regenerate."
+    else true;
+
   fetchDeps = lockFile:
     let
       json = builtins.fromJSON (builtins.readFile lockFile);
       lockVersion = json.version or null;
-      versionCheck =
-        if lockVersion != supportedVersion
-        then builtins.throw "scala-cli-nix: unsupported lockfile version ${builtins.toString lockVersion} (expected ${builtins.toString supportedVersion}). Re-run 'scala-cli-nix lock' to regenerate."
+      versionCheck = checkLockVersion lockVersion;
+      kind = json.kind or "scala-cli";
+      kindCheck =
+        if kind != "scala-cli"
+        then builtins.throw "scala-cli-nix: buildScalaCliApp(s) expects a scala-cli lockfile (kind = \"scala-cli\") but got kind = \"${kind}\". Use buildCoursierApp for coursier-app lockfiles."
         else true;
       native = target: target.native or null;
       test = target: target.test or null;
-    in assert versionCheck; {
+    in assert versionCheck; assert kindCheck; {
       sources = json.sources or [];
       resourceDirs = json.resourceDirs or [];
       targets = builtins.mapAttrs (name: target:
@@ -326,6 +334,25 @@ let
   # Normalize dots to underscores for Nix attribute name ergonomics
   nixKey = key: builtins.replaceStrings [ "." ] [ "_" ] key;
 
+  # Load a `kind = "coursier-app"` lockfile: just dependencies, mainClass, and
+  # optional javaOptions. No sources, no platform, no Coursier cache setup —
+  # the build is a `makeWrapper` over `java -cp <fetched JARs> <mainClass>`.
+  loadCoursierAppLock = lockFile:
+    let
+      json = builtins.fromJSON (builtins.readFile lockFile);
+      lockVersion = json.version or null;
+      versionCheck = checkLockVersion lockVersion;
+      kind = json.kind or "scala-cli";
+      kindCheck =
+        if kind != "coursier-app"
+        then builtins.throw "scala-cli-nix: buildCoursierApp expects a coursier-app lockfile (kind = \"coursier-app\") but got kind = \"${kind}\". Did you mean buildScalaCliApp?"
+        else true;
+    in assert versionCheck; assert kindCheck; {
+      mainClass = json.mainClass;
+      javaOptions = json.javaOptions or [];
+      dependencies = fetchAll (json.dependencies or []);
+    };
+
 in {
   # Collect `passthru.tests` from every package in `packages` into a flat
   # checks-shaped attrset, mapping `<pkgName>-<testName>` to each test
@@ -378,5 +405,58 @@ in {
       sources = fetched.sources;
       resourceDirs = fetched.resourceDirs;
       targetFetched = fetched.targets.${resolvedTarget};
+    };
+
+  # Build a JVM app straight from a `coursier-app` lockfile produced by
+  # `scala-cli-nix lock-coords`. No scala-cli at build time, no compilation —
+  # just `makeWrapper` over `java -cp <fetched JARs> <mainClass>`.
+  #
+  # `mainClass` defaults to the value baked into the lockfile by `lock-coords`;
+  # callers can override it. `javaOptions` from the lockfile (e.g. from a
+  # coursier contrib-channel descriptor) are placed before any user-supplied
+  # ones, which themselves precede the classpath.
+  buildCoursierApp = { pname, version, lockFile, mainClass ? null, javaOptions ? [] }:
+    let
+      loaded = loadCoursierAppLock lockFile;
+      resolvedMainClass = if mainClass != null then mainClass else loaded.mainClass;
+      mainClassCheck =
+        if resolvedMainClass == null
+        then builtins.throw "scala-cli-nix: buildCoursierApp requires mainClass — neither the lockfile nor the call site provided one."
+        else true;
+      # Only JARs end up on the classpath; the lockfile already excludes POMs
+      # (lock-coords drops them) but we filter defensively to stay symmetric
+      # with the scala-cli build path.
+      jarEntries = builtins.filter
+        (e: builtins.match ".*\\.jar" e.dep.url != null)
+        loaded.dependencies;
+      classpath = builtins.concatStringsSep ":" (builtins.map (e: e.path) jarEntries);
+      allJavaOptions = loaded.javaOptions ++ javaOptions;
+      # JVM picks `user.home` from the OS user database on macOS (and from
+      # /etc/passwd on Linux), so Nix sandbox builds leave it at /var/empty
+      # or /homeless-shelter — both unwritable. Apps that write under
+      # user.home (metals' log dir on macOS, coursier's cache, etc.) then
+      # crash. The wrapper evaluates a writable home at runtime: it prefers
+      # $HOME when set and writable (normal user case) and falls back to
+      # $TMPDIR or /tmp when it isn't (sandbox / odd CI envs). Done in a
+      # hand-rolled shell wrapper because makeWrapper freezes its flags at
+      # build time.
+      javaOptsStr = lib.escapeShellArgs allJavaOptions;
+    in assert mainClassCheck; stdenv.mkDerivation {
+      inherit pname version;
+      dontUnpack = true;
+      meta.mainProgram = pname;
+      installPhase = ''
+        mkdir -p $out/bin
+        cat > $out/bin/${pname} <<EOF
+        #!${bash}/bin/bash
+        if [ -n "\''${HOME:-}" ] && [ -w "\$HOME" ]; then
+          user_home="\$HOME"
+        else
+          user_home="\''${TMPDIR:-/tmp}"
+        fi
+        exec ${openjdk}/bin/java -Duser.home="\$user_home" ${javaOptsStr} -cp ${classpath} ${resolvedMainClass} "\$@"
+        EOF
+        chmod +x $out/bin/${pname}
+      '';
     };
 }
