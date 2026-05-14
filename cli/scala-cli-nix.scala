@@ -857,6 +857,10 @@ case class LockCoordsOptions(
     )
     contrib: Boolean = false,
     @HelpMessage(
+      "Additional channel as a Maven coord (org:name) of the channel artifact. App descriptors are read from `<name>/resources/<app>.json` inside the channel JAR. Repeatable; searched after the default (and contrib, if enabled) channels."
+    )
+    channel: List[String] = Nil,
+    @HelpMessage(
       "Main class for raw --dep mode. Optional: if omitted, auto-discovered from the Main-Class attribute in the --dep JARs' META-INF/MANIFEST.MF."
     )
     mainClass: Option[String] = None,
@@ -1431,34 +1435,75 @@ object ContribChannelApp {
 }
 
 /** A coursier "channel" is a Maven artifact whose resources/ directory holds
-  * `<name>.json` app descriptors. The two well-known channels live in
-  * github.com/coursier/apps. We hard-code the GitHub raw paths instead of
-  * resolving the channel artifact from Maven, which keeps this path
-  * network-light (one HTTP GET per channel, no JAR fetch).
+  * `<name>.json` app descriptors. We support two shapes:
   *
-  * Default channel: `io.get-coursier:apps` → `apps/resources/<name>.json`.
-  * Contrib channel: `io.get-coursier:apps-contrib` →
-  * `apps-contrib/resources/<name>.json`.
+  *   - `Builtin`: the two well-known channels in github.com/coursier/apps. We
+  *     hard-code their GitHub raw paths instead of resolving the channel
+  *     artifact from Maven, which keeps the common case network-light (one HTTP
+  *     GET per descriptor, no JAR fetch).
+  *   - `Maven`: an arbitrary `org:name` channel artifact. We resolve the latest
+  *     version via Coursier and read app descriptors from
+  *     `<name>/resources/<app>.json` inside the resulting JAR.
   */
-enum Channel(val raw: String) {
-  case Default
-      extends Channel(
-        "https://raw.githubusercontent.com/coursier/apps/main/apps/resources"
-      )
-  case Contrib
-      extends Channel(
-        "https://raw.githubusercontent.com/coursier/apps/main/apps-contrib/resources"
-      )
+enum Channel {
+  case Builtin(builtinLabel: String, raw: String)
+  case Maven(org: String, name: String)
+
+  def label: String = this match {
+    case Builtin(l, _) => l
+    case Maven(o, n)   => s"$o:$n"
+  }
 }
 
-/** Fetch one app descriptor from a specific channel. Returns None on 404 so
-  * callers can fall back to another channel; raises on other HTTP errors.
+object Channel {
+  val Default: Channel = Builtin(
+    "default",
+    "https://raw.githubusercontent.com/coursier/apps/main/apps/resources"
+  )
+  val Contrib: Channel = Builtin(
+    "contrib",
+    "https://raw.githubusercontent.com/coursier/apps/main/apps-contrib/resources"
+  )
+
+  /** Parse a `org:name` Maven channel coord. */
+  def parseMaven(coord: String): Either[String, Channel] =
+    coord.split(":", -1).toList match {
+      case org :: name :: Nil if org.nonEmpty && name.nonEmpty =>
+        Right(Maven(org, name))
+      case _ =>
+        Left(
+          s"Invalid --channel value '$coord': expected `org:name` (e.g. `io.get-coursier:apps`)."
+        )
+    }
+}
+
+/** Parse a JSON descriptor body into a `ContribChannelApp`. `source` is shown
+  * in the error message — e.g. the URL or `org:name` it was read from.
   */
-def fetchAppFromChannel(
-    channel: Channel,
+private def parseAppDescriptor(
+    name: String,
+    source: String,
+    body: String
+): IO[ContribChannelApp] =
+  IO.fromEither(
+    parseJson(body)
+      .flatMap(_.as[ContribChannelApp])
+      .leftMap(e =>
+        new RuntimeException(
+          s"Failed to parse $name descriptor from $source: ${e.getMessage}"
+        )
+      )
+  )
+
+/** Fetch one app descriptor from a builtin (GitHub-raw) channel. Returns None
+  * on 404 so callers can fall back to another channel; raises on other HTTP
+  * errors.
+  */
+private def fetchAppFromBuiltin(
+    raw: String,
     name: String
 ): IO[Option[ContribChannelApp]] = {
-  val url = s"${channel.raw}/$name.json"
+  val url = s"$raw/$name.json"
   IO.blocking {
     val client = HttpClient.newHttpClient()
     val req = HttpRequest
@@ -1477,30 +1522,95 @@ def fetchAppFromChannel(
     }
   }.flatMap {
     case None       => IO.pure(None)
-    case Some(body) =>
-      IO.fromEither(
-        parseJson(body)
-          .flatMap(_.as[ContribChannelApp])
-          .leftMap(e =>
-            new RuntimeException(
-              s"Failed to parse $name descriptor from ${channel.raw}: ${e.getMessage}"
-            )
-          )
-      ).map(Some(_))
+    case Some(body) => parseAppDescriptor(name, url, body).map(Some(_))
   }
 }
 
+/** Resolve a Maven channel artifact to its JAR. We fetch with `latest.release`,
+  * no transitive deps, and pick the artifact whose URL matches the channel
+  * coord — Fetch may still return other JARs from the resolution (e.g. parent
+  * BOMs) even with transitivity off.
+  */
+private def fetchChannelJar(org: String, name: String): IO[File] = {
+  val coord = s"$org:$name"
+  val dep = Dependency
+    .of(org, name, "latest.release")
+    .withTransitive(false)
+  val suffix = s"/${org.replace('.', '/')}/$name/"
+  fetchArtifacts(dep)
+    .map(_.collect {
+      case (a, f) if a.getUrl.contains(suffix) && a.getUrl.endsWith(".jar") =>
+        f
+    })
+    .flatMap {
+      case head :: _ => IO.pure(head)
+      case Nil       =>
+        IO.raiseError(
+          new RuntimeException(
+            s"Could not locate channel JAR for $coord in the resolved artifacts."
+          )
+        )
+    }
+}
+
+/** Read `<name>.json` from the root of a JAR. Returns None if the entry is
+  * missing.
+  */
+private def readJarEntry(jar: File, entry: String): IO[Option[String]] =
+  IO.blocking {
+    val jf = new JarFile(jar)
+    try
+      Option(jf.getEntry(entry)).map { e =>
+        val is = jf.getInputStream(e)
+        try new String(is.readAllBytes(), "UTF-8")
+        finally is.close()
+      }
+    finally jf.close()
+  }
+
+/** Fetch one app descriptor from a Maven channel. Returns None when the channel
+  * JAR has no `<name>.json` entry; raises if the channel coord itself fails to
+  * resolve.
+  */
+private def fetchAppFromMaven(
+    org: String,
+    artifact: String,
+    name: String
+): IO[Option[ContribChannelApp]] =
+  fetchChannelJar(org, artifact).flatMap { jar =>
+    readJarEntry(jar, s"$name.json").flatMap {
+      case None       => IO.pure(None)
+      case Some(body) =>
+        parseAppDescriptor(name, s"$org:$artifact", body).map(Some(_))
+    }
+  }
+
+/** Fetch one app descriptor from a specific channel. Returns None when the
+  * channel doesn't carry the app, so callers can fall back to another.
+  */
+def fetchAppFromChannel(
+    channel: Channel,
+    name: String
+): IO[Option[ContribChannelApp]] =
+  channel match {
+    case Channel.Builtin(_, raw)   => fetchAppFromBuiltin(raw, name)
+    case Channel.Maven(org, aname) => fetchAppFromMaven(org, aname, name)
+  }
+
 /** Look up an app across the configured channels, in order. Matches coursier's
   * behavior: default channel always searched; contrib channel is added when the
-  * caller passes `--contrib`. The first hit wins.
+  * caller passes `--contrib`; any user-supplied `--channel ORG:NAME` channels
+  * are searched last, in the order given. The first hit wins.
   */
 def lookupApp(
     name: String,
-    includeContrib: Boolean
+    includeContrib: Boolean,
+    userChannels: List[Channel]
 ): IO[ContribChannelApp] = {
   val channels =
-    if (includeContrib) List(Channel.Default, Channel.Contrib)
-    else List(Channel.Default)
+    Channel.Default ::
+      (if (includeContrib) List(Channel.Contrib) else Nil) :::
+      userChannels
   channels
     .foldLeft(IO.pure(Option.empty[ContribChannelApp])) { (acc, ch) =>
       acc.flatMap {
@@ -1511,12 +1621,10 @@ def lookupApp(
     .flatMap {
       case Some(app) => IO.pure(app)
       case None      =>
+        val labels = channels.map(_.label).mkString(", ")
         IO.raiseError(
           new RuntimeException(
-            if (includeContrib)
-              s"App '$name' not found in default or contrib channel."
-            else
-              s"App '$name' not found in the default channel. Pass --contrib to also search the contrib channel."
+            s"App '$name' not found in any of the searched channels: $labels."
           )
         )
     }
@@ -1654,11 +1762,18 @@ def lockCoords(
   appName match {
     case Some(name) =>
       for {
-        _ <- info(
-          s"Looking up ${C.bold}$name${C.reset} in channels " +
-            (if (opts.contrib) "(default + contrib)..." else "(default)...")
+        userChannels <- IO.fromEither(
+          opts.channel
+            .traverse(Channel.parseMaven)
+            .leftMap(new RuntimeException(_))
         )
-        app <- lookupApp(name, opts.contrib)
+        channelLabels =
+          ("default" :: (if (opts.contrib) List("contrib") else Nil)) :::
+            userChannels.map(_.label)
+        _ <- info(
+          s"Looking up ${C.bold}$name${C.reset} in channels (${channelLabels.mkString(" + ")})..."
+        )
+        app <- lookupApp(name, opts.contrib, userChannels)
         mainClass <- app.mainClass match {
           // Descriptors mark optional mainClass fields with a trailing `?`
           // (e.g. scalafmt's "org.scalafmt.cli.Cli?"); we just strip it.

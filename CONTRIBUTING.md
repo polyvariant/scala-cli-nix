@@ -232,7 +232,7 @@ A second, narrower lockfile shape: package a JVM app straight from Coursier coor
 
 Inputs accepted:
 
-- A positional app name. The CLI looks it up in the default channel (https://github.com/coursier/apps under `apps/resources/<name>.json`); with `--contrib`, it also searches the contrib channel (`apps-contrib/resources/<name>.json`). This mirrors `cs install --contrib NAME`. The descriptor's `dependencies` and `mainClass` drive the lock.
+- A positional app name. The CLI looks it up in the default channel (https://github.com/coursier/apps under `apps/resources/<name>.json`); with `--contrib`, it also searches the contrib channel (`apps-contrib/resources/<name>.json`). This mirrors `cs install --contrib NAME`. The descriptor's `dependencies` and `mainClass` drive the lock. Additional `--channel ORG:NAME` flags (repeatable) point at arbitrary Maven channel artifacts — the CLI resolves them to JARs via Coursier (`latest.release`, no transitive deps) and reads `<app>.json` from the JAR root. User channels are searched after default and contrib, in the order given; the first hit wins. The built-in channels stay on the GitHub raw path because it's a single HTTP GET per descriptor; the Maven path costs one JAR fetch per channel.
 - One or more `--dep org:name:version` (or `org::name::version` Scala-suffixed). `--main-class CLASS` is optional: if omitted, the lock command opens each directly-passed JAR's `META-INF/MANIFEST.MF` and uses its `Main-Class` attribute. It errors if no `--dep` JAR declares one (or multiple disagree); pass `--main-class` explicitly in that case. Channel-free path.
 
 `--scala-binary <ver>` (default `3.3.0`) selects how `::`/`:::` coordinates expand — set it to `2.13.12` for apps that only ship 2.13 artifacts (e.g. smithy4s).

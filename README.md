@@ -77,6 +77,11 @@ scala-cli-nix lock-coords scalafmt
 
 # Contrib channel (apps-contrib/resources/<name>.json) — same flag as `cs install --contrib`
 scala-cli-nix lock-coords smithy4s --contrib --scala-binary 2.13.12
+
+# Arbitrary Maven channel artifact — resolved via Coursier (latest release).
+# Descriptors are read from `<app>.json` at the root of the channel JAR.
+# Repeatable; searched after default (and contrib, if enabled).
+scala-cli-nix lock-coords my-app --channel org.example:my-channel
 ```
 
 Or with raw coords, when there is no channel descriptor (or you want to pin a specific version):

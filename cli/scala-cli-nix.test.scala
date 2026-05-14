@@ -715,3 +715,30 @@ class JarUrlSuffixTests extends munit.FunSuite {
     assert(url.endsWith(jarUrlSuffix(dep)))
   }
 }
+
+class ChannelParseMavenTests extends munit.FunSuite {
+  test("accepts org:name") {
+    assertEquals(
+      Channel.parseMaven("io.get-coursier:apps"),
+      Right(Channel.Maven("io.get-coursier", "apps"))
+    )
+  }
+
+  test("rejects missing colon") {
+    assert(Channel.parseMaven("io.get-coursier-apps").isLeft)
+  }
+
+  test("rejects empty org or name") {
+    assert(Channel.parseMaven(":apps").isLeft)
+    assert(Channel.parseMaven("io.get-coursier:").isLeft)
+  }
+
+  test("rejects three colon-separated parts (would be a version)") {
+    assert(Channel.parseMaven("io.get-coursier:apps:1.0.0").isLeft)
+  }
+
+  test("label round-trips for Maven channels") {
+    val ch = Channel.parseMaven("org.example:my-channel").toOption.get
+    assertEquals(ch.label, "org.example:my-channel")
+  }
+}

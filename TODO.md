@@ -9,7 +9,7 @@
 - [x] Adding checks based on tests should be done via a library function, and we should do it in both new and existing users' flakes
 - [x] Cache the artifact hashing?
 - [x] `lock-coords`: auto-discover `--main-class` from coords (e.g. by reading the artifact's `META-INF/MANIFEST.MF` `Main-Class` attribute), so the raw-coords path doesn't force `--main-class` for single-jar apps.
-- [ ] `lock-coords`: support arbitrary `--channel ORG:NAME` (a Maven coord of the channel artifact itself). Currently only the two built-in channels (default + `--contrib`) are wired in.
+- [x] `lock-coords`: support arbitrary `--channel ORG:NAME` (a Maven coord of the channel artifact itself). Currently only the two built-in channels (default + `--contrib`) are wired in.
 - [ ] `buildCoursierApp`: GraalVM native-image variant (`nativeImage = true`), analogous to the scala-cli path. Likely needs reflection configs from the user since there is no scala-cli compile step to pick them up from `using` directives.
 - [ ] `lock-coords`: per-coord scala-binary overrides. Currently a single `--scala-binary` applies to all `::` coords; mixed-binary descriptors (rare) can't be expressed.
 - [x] Figure out a way to have multiple lockfiles for crosscompilation
