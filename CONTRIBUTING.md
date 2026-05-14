@@ -235,6 +235,7 @@ examples/
   scala-resources/        # Cross JVM+Native example using //> using resourceDir
   scala3-native-image/    # JVM target built as a GraalVM native image (nativeImage = true)
   scala3-shadowed-deps/   # Regression guard: builds against a real lockfile that includes an evicted-POM coordinate; the binary calls `Node.child` to verify the runtime classpath isn't shadowed by a duplicate JAR
+  scala3-cross-platform-version/  # Full matrix example: JVM+Native × two Scala 3 versions (3.3.4 and 3.6.4), exercising the `<platform>-<version>` target-key format
 ```
 
 ### Running checks

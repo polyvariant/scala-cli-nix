@@ -109,6 +109,7 @@
           example-scala3-native-image = pkgs.callPackage ./examples/scala3-native-image/derivation.nix { };
           example-scala3-shadowed-deps = pkgs.callPackage ./examples/scala3-shadowed-deps/derivation.nix { };
           example-scala3-native-evicted-2_13 = pkgs.callPackage ./examples/scala3-native-evicted-2.13/derivation.nix { };
+          example-scala3-cross-platform-version = pkgs.callPackage ./examples/scala3-cross-platform-version/derivation.nix { };
         in packageTests // {
           example = pkgs.runCommand "check-example" { } ''
             output=$(${example}/bin/example)
@@ -245,7 +246,28 @@
               exit 1
             fi
           '';
-        }
+        } // nixpkgs.lib.listToAttrs (builtins.map
+          # 4-target matrix (JVM/Native × Scala 3.3.4/3.6.4). Each target
+          # produces its own derivation (keyed `<platform>-<version>` per
+          # lib.nix's nixKey), so building all four exercises the
+          # platform×version key-naming path. The binaries print a single
+          # shared greeting — distinguishability comes from the derivation
+          # keys, not the output.
+          (key: {
+            name = "example-scala3-cross-platform-version-${key}";
+            value = pkgs.runCommand "check-example-scala3-cross-platform-version-${key}" { } ''
+              output=$(${example-scala3-cross-platform-version."${key}"}/bin/example-scala3-cross-platform-version)
+              expected="hello from cross-platform-version!"
+              if [ "$output" = "$expected" ]; then
+                echo "OK: example-scala3-cross-platform-version-${key} output matches"
+                touch $out
+              else
+                echo "FAIL: expected '$expected', got '$output'"
+                exit 1
+              fi
+            '';
+          })
+          [ "jvm-3_3_4" "jvm-3_6_4" "native-3_3_4" "native-3_6_4" ])
       );
     };
 }
