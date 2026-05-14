@@ -111,6 +111,11 @@
           example-scala3-shadowed-deps = pkgs.callPackage ./examples/scala3-shadowed-deps/derivation.nix { };
           example-scala3-native-evicted-2_13 = pkgs.callPackage ./examples/scala3-native-evicted-2.13/derivation.nix { };
           example-scala3-cross-platform-version = pkgs.callPackage ./examples/scala3-cross-platform-version/derivation.nix { };
+          example-scala-test-weaver = pkgs.callPackage ./examples/scala-test-weaver/derivation.nix { };
+          example-scala-test-munit = pkgs.callPackage ./examples/scala-test-munit/derivation.nix { };
+          example-scala-test-utest = pkgs.callPackage ./examples/scala-test-utest/derivation.nix { };
+          example-scala-test-scalatest = pkgs.callPackage ./examples/scala-test-scalatest/derivation.nix { };
+          example-scala-test-ziotest = pkgs.callPackage ./examples/scala-test-ziotest/derivation.nix { };
 
           # Build a runCommand that runs `<pkg>/bin/<binName>` and asserts its
           # stdout equals `expected`. `binName` defaults to the check key,
@@ -159,7 +164,44 @@
           # signature changed between 2.x). Running the binary verifies the
           # classpath only carries the resolved winner.
           example-scala3-shadowed-deps = mkOutputCheck { name = "example-scala3-shadowed-deps"; pkg = example-scala3-shadowed-deps; expected = "hello from shadowed-deps! grandchildren=2"; };
-        } // nixpkgs.lib.listToAttrs (builtins.map
+        } // (
+          # Cross JVM+Native test-framework examples. Each framework gets its
+          # own example built for both platforms; for every (framework,
+          # platform) pair we register two checks: a binary-output check
+          # (proves the main app links and runs) and a passthru test check
+          # (proves the test framework actually runs under
+          # `scala-cli test --offline --server=false`).
+          let
+            frameworks = [
+              { name = "weaver"; expected = "hello from weaver test framework!"; }
+              { name = "munit"; expected = "hello from munit test framework!"; }
+              { name = "utest"; expected = "hello from utest test framework!"; }
+              { name = "scalatest"; expected = "hello from scalatest test framework!"; }
+              { name = "ziotest"; expected = "hello from zio-test test framework!"; }
+            ];
+            pkgFor = fw: ({
+              weaver = example-scala-test-weaver;
+              munit = example-scala-test-munit;
+              utest = example-scala-test-utest;
+              scalatest = example-scala-test-scalatest;
+              ziotest = example-scala-test-ziotest;
+            }).${fw.name};
+            targets = [ "jvm" "native" ];
+            entries = nixpkgs.lib.flatten (builtins.map
+              (fw: builtins.map (t:
+                let
+                  apps = pkgFor fw;
+                  pkg = apps.${t};
+                  base = "example-scala-test-${fw.name}";
+                  binName = base;
+                in [
+                  { name = "${base}-${t}"; value = mkOutputCheck { name = "${base}-${t}"; inherit pkg binName; inherit (fw) expected; }; }
+                  { name = "${base}-${t}-test"; value = pkg.passthru.tests.test; }
+                ])
+                targets)
+              frameworks);
+          in nixpkgs.lib.listToAttrs entries
+        ) // nixpkgs.lib.listToAttrs (builtins.map
           # 4-target matrix (JVM/Native × Scala 3.3.4/3.6.4). Each target
           # produces its own derivation (keyed `<platform>-<version>` per
           # lib.nix's nixKey), so building all four exercises the

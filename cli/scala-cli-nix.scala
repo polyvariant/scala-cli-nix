@@ -1029,6 +1029,29 @@ private def computeTargetLockContent(
         // it for the Test scope on JVM). For Native, `test-interface` is pulled
         // in transitively by the test framework (e.g. munit-native). Native
         // runtime deps are merged in for the same reason as the main scope.
+        //
+        // We also inject `test-interface_native<snBinary>_<scalaBinary>` at
+        // scala-cli's bundled Scala Native version as a *direct* dep. At test
+        // time scala-cli's offline runner needs that exact version on the
+        // classpath, but test frameworks only pull in the version they were
+        // built against (e.g. munit 1.1.0 → test-interface 0.5.6 while
+        // scala-cli ships 0.5.10). Without this direct pin Coursier picks the
+        // framework's older version as the winner and `scala-cli test --offline`
+        // can't find scala-cli's wanted version in the cache.
+        nativeTestInterfaceDep: Option[Dependency] = export_.nativeOptions.map {
+          opts =>
+            val snBinary =
+              opts.scalaNativeVersion.split('.').take(2).mkString(".")
+            val scalaBinary = scalaMajor match {
+              case "3" => "3"
+              case _   => scalaVersion.split('.').take(2).mkString(".")
+            }
+            Dependency.of(
+              "org.scala-native",
+              s"test-interface_native${snBinary}_${scalaBinary}",
+              opts.scalaNativeVersion
+            )
+        }
         testLock <- testScope
           .filter(s =>
             s.sources.nonEmpty || s.dependencies != mainScope.dependencies
@@ -1037,7 +1060,8 @@ private def computeTargetLockContent(
             val testDeps = tScope.dependencies.map(d =>
               Dependency.of(d.groupId, d.artifactId.fullName, d.version)
             )
-            val allTestDeps = (libraryArtifact +: testDeps) ++ nativeRuntimeDeps
+            val allTestDeps =
+              (libraryArtifact +: testDeps) ++ nativeRuntimeDeps ++ nativeTestInterfaceDep.toList
             for {
               _ <- step("Fetching test dependencies...")
               testArtifacts <- fetchArtifacts(allTestDeps*)

@@ -78,7 +78,7 @@ The lockfile uses a multi-target format. Each target (a platform/Scala version c
   }
 }
 ```
-`test.libraryDependencies` is the full transitive resolution of main+test deps as a single Coursier resolution (matching scala-cli's own `Scope.Test` resolution model). For JVM tests, the `org.virtuslab.scala-cli:test-runner_<scalaBinary>` module appears directly in the test scope's `dependencies` returned by `scala-cli export --json` — the fork's `ScopedBuildInfo.forScope` injects it for the Test scope on JVM, with legacy version fallbacks for older Scala/Java already applied upstream. For Native tests, `test-interface` is pulled in transitively by the test framework (e.g. munit-native), so no explicit runner dep is added.
+`test.libraryDependencies` is the full transitive resolution of main+test deps as a single Coursier resolution (matching scala-cli's own `Scope.Test` resolution model). For JVM tests, the `org.virtuslab.scala-cli:test-runner_<scalaBinary>` module appears directly in the test scope's `dependencies` returned by `scala-cli export --json` — the fork's `ScopedBuildInfo.forScope` injects it for the Test scope on JVM, with legacy version fallbacks for older Scala/Java already applied upstream. For Native tests, `test-interface` is pulled in transitively by the test framework (e.g. munit-native), but the framework's pinned version (e.g. `0.5.6`) often differs from scala-cli's bundled Scala Native runtime version (e.g. `0.5.10`). At test time `scala-cli test --offline` needs `test-interface` at scala-cli's bundled version, so the lock command also injects `org.scala-native:test-interface_native<snBinary>_<scalaBinary>:<scalaNativeVersion>` as a *direct* dep in the test-scope Coursier resolution. Being direct makes it the winner, ensuring the offline cache carries the version `scala-cli` will look up.
 
 ##### Target key naming
 
@@ -250,6 +250,11 @@ examples/
   scala3-native-evicted-2.13/    # Regression guard for combined Native resolution: portable-scala-reflect pins scalalib_native0.5_2.13, which would resolve differently under a user-libs-only pass — see "Combined resolution for Native targets"
   scala3-subset/          # Regression guard for subset source locking: an `unrelated.scala` with invalid Scala lives in the project root and must NOT leak into the build (the lockfile scopes sources to `src/` only)
   scala3-cross-platform-version/  # Full matrix example: JVM+Native × two Scala 3 versions (3.3.4 and 3.6.4), exercising the `<platform>-<version>` target-key format
+  scala-test-weaver/        # Cross JVM+Native, weaver-cats test framework
+  scala-test-munit/         # Cross JVM+Native, munit test framework
+  scala-test-utest/         # Cross JVM+Native, utest test framework
+  scala-test-scalatest/     # Cross JVM+Native, scalatest test framework
+  scala-test-ziotest/       # Cross JVM+Native, zio-test test framework
 ```
 
 ### Running checks
