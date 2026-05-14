@@ -255,7 +255,12 @@ examples/
   scala-test-utest/         # Cross JVM+Native, utest test framework
   scala-test-scalatest/     # Cross JVM+Native, scalatest test framework
   scala-test-ziotest/       # Cross JVM+Native, zio-test test framework
+  scala-native-docker/            # Wraps the scala-native binary into a dockerTools.buildLayeredImage (Linux-only)
+  scala3-jvm-docker/              # Wraps the scala3 JVM app (wrapper + per-artifact JARs end up in the image)
+  scala3-native-image-docker/     # Wraps the GraalVM native-image binary
 ```
+
+Each `*-docker/` example is a thin `dockerTools.buildLayeredImage` derivation that takes the upstream app as a `callPackage` argument; no Scala source or lockfile of its own. They're wired into the root flake under `lib.optionalAttrs pkgs.stdenv.isLinux` (because `dockerTools` doesn't build on Darwin) so they at least build under `nix flake check` on aarch64-linux. The `docker-images` VM test is further gated to `x86_64-linux` because `pkgs.testers.runNixOSTest` needs KVM of the matching arch, and that's the only Linux arch we count on for CI builders. The VM test runs a NixOS guest with dockerd that loads each image and asserts the container's stdout — covering the full pattern from the README's Docker section.
 
 ### Running checks
 
@@ -263,7 +268,7 @@ examples/
 nix flake check --print-build-logs
 ```
 
-This builds all example apps (Scala 2, Scala 3, Scala Native, Native+CE, and the cross JVM/Native example) and verifies their output.
+This builds all example apps (Scala 2, Scala 3, Scala Native, Native+CE, the cross JVM/Native example, and on Linux the docker images via a NixOS VM test) and verifies their output.
 
 ### CLI tool
 

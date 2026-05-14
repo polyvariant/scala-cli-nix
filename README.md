@@ -112,6 +112,48 @@ Tradeoffs:
 - Per-artifact granularity is lost for the *output* — every dep change rebuilds the fat JAR. Inputs (the fetchurl FODs) are still cached per-artifact, so dep fetching is unaffected.
 - `packaging = "assembly"` is JVM-only and mutually exclusive with `nativeImage = true`.
 
+## Docker images
+
+Any app built by `buildScalaCliApp(s)` can be packaged into a container with `pkgs.dockerTools.buildLayeredImage`. The image just needs the app derivation in `contents` — `dockerTools` walks its runtime closure and pulls in the JRE (for JVM targets) or libc (for native targets) automatically.
+
+The three flavors work the same way:
+
+- **Scala Native** — single static-ish binary, smallest image. Linker only runs on the host platform (Linux build → Linux binary).
+- **GraalVM native-image** (JVM target with `nativeImage = true`) — single binary built from JVM source, no JVM at runtime, slower build.
+- **Plain JVM** — the wrapper script and the per-artifact JAR store paths come along; the image ends up larger because the JRE is included, but the source stays portable.
+
+Wrap the image attribute in `lib.optionalAttrs pkgs.stdenv.isLinux` so evaluation still works on macOS — `dockerTools` only builds on Linux:
+
+```nix
+{
+  packages = forAllSystems (system:
+    let
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ scala-cli-nix.overlays.default ];
+      };
+      app = pkgs.callPackage ./derivation.nix { };
+    in {
+      default = app;
+    } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+      dockerImage = pkgs.dockerTools.buildLayeredImage {
+        name = "my-app";
+        tag = app.version;
+        contents = [ pkgs.cacert app ];
+        config = {
+          Cmd = [ (pkgs.lib.getExe app) ];
+          ExposedPorts."8080/tcp" = { };
+        };
+      };
+    }
+  );
+}
+```
+
+Then `nix build .#dockerImage` on a Linux builder produces a tarball you can `docker load` (or push with `skopeo`). Cross-building from macOS is the usual nixpkgs story — point at a remote Linux builder.
+
+Worked examples in this repo (`examples/scala-native-docker`, `examples/scala3-jvm-docker`, `examples/scala3-native-image-docker`) each wrap one of the existing app examples into a layered image. The image derivations build on any Linux system; on `x86_64-linux` `nix flake check` additionally runs a NixOS VM test (`docker-images`) that loads all three into a real dockerd and asserts each container's stdout, so the pattern is covered end-to-end. The VM test is x86_64-only because it needs a KVM-capable builder of the matching arch.
+
 ## How it works
 
 1. **`scala-cli-nix lock`** runs outside Nix (with network access):
