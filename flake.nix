@@ -110,108 +110,37 @@
           example-scala3-shadowed-deps = pkgs.callPackage ./examples/scala3-shadowed-deps/derivation.nix { };
           example-scala3-native-evicted-2_13 = pkgs.callPackage ./examples/scala3-native-evicted-2.13/derivation.nix { };
           example-scala3-cross-platform-version = pkgs.callPackage ./examples/scala3-cross-platform-version/derivation.nix { };
+
+          # Build a runCommand that runs `<pkg>/bin/<binName>` and asserts its
+          # stdout equals `expected`. `binName` defaults to the check key,
+          # which holds for every example whose pname matches its check name;
+          # cross-target checks (e.g. `example-foo-jvm`) pass `binName`
+          # explicitly because the underlying binary keeps the unsuffixed
+          # pname.
+          mkOutputCheck = { name, pkg, expected, binName ? name }:
+            pkgs.runCommand "check-${name}" { } ''
+              output=$(${pkg}/bin/${binName})
+              expected=${nixpkgs.lib.escapeShellArg expected}
+              if [ "$output" = "$expected" ]; then
+                echo "OK: ${name} output matches"
+                touch $out
+              else
+                echo "FAIL: expected '$expected', got '$output'"
+                exit 1
+              fi
+            '';
         in packageTests // {
-          example = pkgs.runCommand "check-example" { } ''
-            output=$(${example}/bin/example)
-            if [ "$output" = "hello world!" ]; then
-              echo "OK: example output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello world!', got '$output'"
-              exit 1
-            fi
-          '';
-          example-scala3-subset = pkgs.runCommand "check-example-scala3-subset" { } ''
-            output=$(${example-scala3-subset}/bin/example-scala3-subset)
-            if [ "$output" = "hello from subset!" ]; then
-              echo "OK: example-scala3-subset output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello from subset!', got '$output'"
-              exit 1
-            fi
-          '';
-          example-scala2 = pkgs.runCommand "check-example-scala2" { } ''
-            output=$(${example-scala2}/bin/example-scala2)
-            if [ "$output" = "hello from scala 2!" ]; then
-              echo "OK: example-scala2 output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello from scala 2!', got '$output'"
-              exit 1
-            fi
-          '';
-          example-scala-native = pkgs.runCommand "check-example-scala-native" { } ''
-            output=$(${example-scala-native}/bin/example-scala-native)
-            if [ "$output" = "hello from scala native!" ]; then
-              echo "OK: example-scala-native output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello from scala native!', got '$output'"
-              exit 1
-            fi
-          '';
+          example = mkOutputCheck { name = "example"; pkg = example; expected = "hello world!"; };
+          example-scala3-subset = mkOutputCheck { name = "example-scala3-subset"; pkg = example-scala3-subset; expected = "hello from subset!"; };
+          example-scala2 = mkOutputCheck { name = "example-scala2"; pkg = example-scala2; expected = "hello from scala 2!"; };
+          example-scala-native = mkOutputCheck { name = "example-scala-native"; pkg = example-scala-native; expected = "hello from scala native!"; };
           example-scala-native-test = example-scala-native.passthru.tests.test;
-          example-scala-native-ce = pkgs.runCommand "check-example-scala-native-ce" { } ''
-            output=$(${example-scala-native-ce}/bin/example-scala-native-ce)
-            if [ "$output" = "hello from scala native with cats-effect!" ]; then
-              echo "OK: example-scala-native-ce output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello from scala native with cats-effect!', got '$output'"
-              exit 1
-            fi
-          '';
-          example-scala-native-ce-cross-jvm = pkgs.runCommand "check-example-scala-native-ce-cross-jvm" { } ''
-            output=$(${example-scala-native-ce-cross.jvm}/bin/example-scala-native-ce-cross)
-            if [ "$output" = "hello from scala jvm/native with cats-effect!" ]; then
-              echo "OK: example-scala-native-ce-cross-jvm output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello from scala jvm/native with cats-effect!', got '$output'"
-              exit 1
-            fi
-          '';
-          example-scala-native-ce-cross-native = pkgs.runCommand "check-example-scala-native-ce-cross-native" { } ''
-            output=$(${example-scala-native-ce-cross.native}/bin/example-scala-native-ce-cross)
-            if [ "$output" = "hello from scala jvm/native with cats-effect!" ]; then
-              echo "OK: example-scala-native-ce-cross-native output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello from scala jvm/native with cats-effect!', got '$output'"
-              exit 1
-            fi
-          '';
-          example-scala-resources-jvm = pkgs.runCommand "check-example-scala-resources-jvm" { } ''
-            output=$(${example-scala-resources.jvm}/bin/example-scala-resources)
-            if [ "$output" = "hello from embedded resource!" ]; then
-              echo "OK: example-scala-resources-jvm output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello from embedded resource!', got '$output'"
-              exit 1
-            fi
-          '';
-          example-scala-resources-native = pkgs.runCommand "check-example-scala-resources-native" { } ''
-            output=$(${example-scala-resources.native}/bin/example-scala-resources)
-            if [ "$output" = "hello from embedded resource!" ]; then
-              echo "OK: example-scala-resources-native output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello from embedded resource!', got '$output'"
-              exit 1
-            fi
-          '';
-          example-scala3-native-image = pkgs.runCommand "check-example-scala3-native-image" { } ''
-            output=$(${example-scala3-native-image}/bin/example-scala3-native-image)
-            if [ "$output" = "hello from graalvm native image!" ]; then
-              echo "OK: example-scala3-native-image output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello from graalvm native image!', got '$output'"
-              exit 1
-            fi
-          '';
+          example-scala-native-ce = mkOutputCheck { name = "example-scala-native-ce"; pkg = example-scala-native-ce; expected = "hello from scala native with cats-effect!"; };
+          example-scala-native-ce-cross-jvm = mkOutputCheck { name = "example-scala-native-ce-cross-jvm"; pkg = example-scala-native-ce-cross.jvm; binName = "example-scala-native-ce-cross"; expected = "hello from scala jvm/native with cats-effect!"; };
+          example-scala-native-ce-cross-native = mkOutputCheck { name = "example-scala-native-ce-cross-native"; pkg = example-scala-native-ce-cross.native; binName = "example-scala-native-ce-cross"; expected = "hello from scala jvm/native with cats-effect!"; };
+          example-scala-resources-jvm = mkOutputCheck { name = "example-scala-resources-jvm"; pkg = example-scala-resources.jvm; binName = "example-scala-resources"; expected = "hello from embedded resource!"; };
+          example-scala-resources-native = mkOutputCheck { name = "example-scala-resources-native"; pkg = example-scala-resources.native; binName = "example-scala-resources"; expected = "hello from embedded resource!"; };
+          example-scala3-native-image = mkOutputCheck { name = "example-scala3-native-image"; pkg = example-scala3-native-image; expected = "hello from graalvm native image!"; };
           # Regression: scala-java-time transitively pulls
           # portable-scala-reflect_native0.5_2.13, which pins scalalib_native0.5_2.13
           # to 2.13.8+0.5.2. scala-cli's combined resolution at build time picks
@@ -221,31 +150,13 @@
           # different scalalib_2.13 winner and `scala-cli package --offline`
           # can't find the JAR. Running the binary verifies the lock matches
           # scala-cli's build-time resolution.
-          example-scala3-native-evicted-2_13 = pkgs.runCommand "check-example-scala3-native-evicted-2_13" { } ''
-            output=$(${example-scala3-native-evicted-2_13}/bin/example-scala3-native-evicted-2_13)
-            if [ "$output" = "hello from evicted-2.13!" ]; then
-              echo "OK: example-scala3-native-evicted-2_13 output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello from evicted-2.13!', got '$output'"
-              exit 1
-            fi
-          '';
+          example-scala3-native-evicted-2_13 = mkOutputCheck { name = "example-scala3-native-evicted-2_13"; pkg = example-scala3-native-evicted-2_13; expected = "hello from evicted-2.13!"; };
           # Regression: a transitive POM (scalatest 3.2.9) declares scala-xml_3:2.0.0;
           # if that JAR ends up on the runtime classpath alongside our 2.4.0
           # winner, the binary throws NoSuchMethodError on `Node.child()` (the
           # signature changed between 2.x). Running the binary verifies the
           # classpath only carries the resolved winner.
-          example-scala3-shadowed-deps = pkgs.runCommand "check-example-scala3-shadowed-deps" { } ''
-            output=$(${example-scala3-shadowed-deps}/bin/example-scala3-shadowed-deps)
-            if [ "$output" = "hello from shadowed-deps! grandchildren=2" ]; then
-              echo "OK: example-scala3-shadowed-deps output matches"
-              touch $out
-            else
-              echo "FAIL: expected 'hello from shadowed-deps! grandchildren=2', got '$output'"
-              exit 1
-            fi
-          '';
+          example-scala3-shadowed-deps = mkOutputCheck { name = "example-scala3-shadowed-deps"; pkg = example-scala3-shadowed-deps; expected = "hello from shadowed-deps! grandchildren=2"; };
         } // nixpkgs.lib.listToAttrs (builtins.map
           # 4-target matrix (JVM/Native × Scala 3.3.4/3.6.4). Each target
           # produces its own derivation (keyed `<platform>-<version>` per
@@ -255,17 +166,12 @@
           # keys, not the output.
           (key: {
             name = "example-scala3-cross-platform-version-${key}";
-            value = pkgs.runCommand "check-example-scala3-cross-platform-version-${key}" { } ''
-              output=$(${example-scala3-cross-platform-version."${key}"}/bin/example-scala3-cross-platform-version)
-              expected="hello from cross-platform-version!"
-              if [ "$output" = "$expected" ]; then
-                echo "OK: example-scala3-cross-platform-version-${key} output matches"
-                touch $out
-              else
-                echo "FAIL: expected '$expected', got '$output'"
-                exit 1
-              fi
-            '';
+            value = mkOutputCheck {
+              name = "example-scala3-cross-platform-version-${key}";
+              pkg = example-scala3-cross-platform-version."${key}";
+              binName = "example-scala3-cross-platform-version";
+              expected = "hello from cross-platform-version!";
+            };
           })
           [ "jvm-3_3_4" "jvm-3_6_4" "native-3_3_4" "native-3_6_4" ])
       );
