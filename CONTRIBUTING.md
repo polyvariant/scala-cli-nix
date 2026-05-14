@@ -260,7 +260,7 @@ examples/
   scala3-native-image-docker/     # Wraps the GraalVM native-image binary
 ```
 
-Each `*-docker/` example is a thin `dockerTools.buildLayeredImage` derivation that takes the upstream app as a `callPackage` argument; no Scala source or lockfile of its own. They're wired into the root flake under `lib.optionalAttrs pkgs.stdenv.isLinux` (because `dockerTools` doesn't build on Darwin) so they at least build under `nix flake check` on aarch64-linux. The `docker-images` VM test is further gated to `x86_64-linux` because `pkgs.testers.runNixOSTest` needs KVM of the matching arch, and that's the only Linux arch we count on for CI builders. The VM test runs a NixOS guest with dockerd that loads each image and asserts the container's stdout — covering the full pattern from the README's Docker section.
+Each `*-docker/` example is a thin `dockerTools.buildLayeredImage` derivation that takes the upstream app as a `callPackage` argument; no Scala source or lockfile of its own. They're wired into the root flake under `lib.optionalAttrs pkgs.stdenv.isLinux` (because `dockerTools` doesn't build on Darwin) so they at least build under `nix flake check` on aarch64-linux. The per-image VM tests (`docker-image-scala-native`, `docker-image-scala3-jvm`, `docker-image-scala3-native-image`, each built via the `mkDockerImageTest` helper) are further gated to `x86_64-linux` because `pkgs.testers.runNixOSTest` needs KVM of the matching arch, and that's the only Linux arch we count on for CI builders. Each VM test runs a NixOS guest with dockerd that loads one image and asserts the container's stdout — covering the full pattern from the README's Docker section.
 
 ### Running checks
 

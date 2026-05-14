@@ -204,8 +204,8 @@
         ) // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux (
           # Docker examples: thin derivations that wrap an existing example's
           # native binary (or JVM wrapper) into a `dockerTools.buildLayeredImage`
-          # output. The images build on any Linux platform; only the VM test
-          # (`docker-images`) is gated further to x86_64-linux because
+          # output. The images build on any Linux platform; only the per-image
+          # VM tests (`docker-image-*`) are gated further to x86_64-linux because
           # `pkgs.testers.runNixOSTest` needs a KVM-capable builder of the same
           # arch, and we only count on that for x86_64 in CI.
           let
@@ -218,33 +218,40 @@
             example-scala3-native-image-docker = pkgs.callPackage ./examples/scala3-native-image-docker/derivation.nix {
               inherit example-scala3-native-image;
             };
-          in {
-            inherit example-scala-native-docker example-scala3-jvm-docker example-scala3-native-image-docker;
-          } // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
-            docker-images = pkgs.testers.runNixOSTest {
-              name = "scala-cli-nix-docker-images";
+            mkDockerImageTest = { name, pkg, expected }: pkgs.testers.runNixOSTest {
+              inherit name;
               nodes.machine = { ... }: {
                 virtualisation.docker.enable = true;
-                # Enough headroom for the JVM image (openjdk-21 alone is ~300 MB)
-                # plus the native-image binary, both extracted into docker's
-                # overlayfs snapshot dir.
+                # Shared headroom sized for the largest image (JVM, with
+                # openjdk-21 alone ~300 MB) extracted into docker's overlayfs
+                # snapshot dir. Smaller images don't need this much, but a
+                # single shared value keeps the helper simple.
                 virtualisation.diskSize = 8192;
               };
               testScript = ''
                 machine.wait_for_unit("docker.service")
-
-                images = [
-                    ("${example-scala-native-docker}", "${example-scala-native-docker.imageName}:${example-scala-native-docker.imageTag}", "hello from scala native!"),
-                    ("${example-scala3-jvm-docker}", "${example-scala3-jvm-docker.imageName}:${example-scala3-jvm-docker.imageTag}", "hello world!"),
-                    ("${example-scala3-native-image-docker}", "${example-scala3-native-image-docker.imageName}:${example-scala3-native-image-docker.imageTag}", "hello from graalvm native image!"),
-                ]
-
-                for tarball, ref, expected in images:
-                    with subtest(f"load and run {ref}"):
-                        machine.succeed(f"docker load < {tarball}")
-                        output = machine.succeed(f"docker run --rm {ref}").strip()
-                        assert output == expected, f"{ref}: expected {expected!r}, got {output!r}"
+                machine.succeed("docker load < ${pkg}")
+                output = machine.succeed("docker run --rm ${pkg.imageName}:${pkg.imageTag}").strip()
+                assert output == ${builtins.toJSON expected}, f"got {output!r}"
               '';
+            };
+          in {
+            inherit example-scala-native-docker example-scala3-jvm-docker example-scala3-native-image-docker;
+          } // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+            docker-image-scala-native = mkDockerImageTest {
+              name = "scala-cli-nix-docker-image-scala-native";
+              pkg = example-scala-native-docker;
+              expected = "hello from scala native!";
+            };
+            docker-image-scala3-jvm = mkDockerImageTest {
+              name = "scala-cli-nix-docker-image-scala3-jvm";
+              pkg = example-scala3-jvm-docker;
+              expected = "hello world!";
+            };
+            docker-image-scala3-native-image = mkDockerImageTest {
+              name = "scala-cli-nix-docker-image-scala3-native-image";
+              pkg = example-scala3-native-image-docker;
+              expected = "hello from graalvm native image!";
             };
           }
         ) // nixpkgs.lib.listToAttrs (builtins.map
