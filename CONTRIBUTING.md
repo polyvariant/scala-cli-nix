@@ -160,7 +160,7 @@ When `nativeImage = true` is passed to `buildScalaCliApp(s)`, a JVM target is bu
 
 For Scala Native (`platform: "Native"`), the build is simpler but the dependency set is larger:
 
-1. **Deps cache**: Compiler, library, and all three native dependency groups (compiler plugins, runtime, tooling) are symlinked into the Coursier cache. The `+` character in artifact versions (e.g., `3.6.4+0.5.10`) is percent-encoded to `%2B` to match Coursier's cache layout.
+1. **Deps cache**: Compiler and library JARs/POMs are symlinked into the Coursier cache, along with native tooling (linker, scala-native-cli). In newly generated lockfiles, Scala Native's own runtime artifacts (`nscplugin`, `scala3lib_native`, `javalib_native`) live in `libraryDependencies` — see "Combined resolution for Native targets" in the lockfile reference above. `lib.nix` still folds in `native.compilerPlugins` and `native.runtimeDependencies` so older lockfiles keep building. The `+` character in artifact versions (e.g., `3.6.4+0.5.10`) is percent-encoded to `%2B` to match Coursier's cache layout.
 2. **Compilation + linking**: `scala-cli --power package <sources> --server=false --offline --platform scala-native --scala-version <v>` compiles and links everything into a single native executable. No `--library` flag — the entire app is linked into one binary.
 3. **No wrapper**: The output is a native binary, copied directly to `$out/bin`. No JVM or classpath needed at runtime.
 4. **Extra build inputs**: `clang` and `which` are needed for the native linking step.
@@ -235,6 +235,8 @@ examples/
   scala-resources/        # Cross JVM+Native example using //> using resourceDir
   scala3-native-image/    # JVM target built as a GraalVM native image (nativeImage = true)
   scala3-shadowed-deps/   # Regression guard: builds against a real lockfile that includes an evicted-POM coordinate; the binary calls `Node.child` to verify the runtime classpath isn't shadowed by a duplicate JAR
+  scala3-native-evicted-2.13/    # Regression guard for combined Native resolution: portable-scala-reflect pins scalalib_native0.5_2.13, which would resolve differently under a user-libs-only pass — see "Combined resolution for Native targets"
+  scala3-subset/          # Regression guard for subset source locking: an `unrelated.scala` with invalid Scala lives in the project root and must NOT leak into the build (the lockfile scopes sources to `src/` only)
   scala3-cross-platform-version/  # Full matrix example: JVM+Native × two Scala 3 versions (3.3.4 and 3.6.4), exercising the `<platform>-<version>` target-key format
 ```
 
