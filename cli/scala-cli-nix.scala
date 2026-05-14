@@ -29,6 +29,7 @@ import java.io.File
 import java.net.URI
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.util.Base64
+import java.util.jar.JarFile
 import scala.jdk.CollectionConverters.*
 import scala.xml.{Node, NodeSeq, XML}
 
@@ -855,7 +856,9 @@ case class LockCoordsOptions(
       "Also search the contrib channel (io.get-coursier:apps-contrib) when looking up the positional app name. Mirrors `cs install --contrib`."
     )
     contrib: Boolean = false,
-    @HelpMessage("Main class for raw --dep mode (required there).")
+    @HelpMessage(
+      "Main class for raw --dep mode. Optional: if omitted, auto-discovered from the Main-Class attribute in the --dep JARs' META-INF/MANIFEST.MF."
+    )
     mainClass: Option[String] = None,
     @HelpMessage(
       "Scala version used to expand `::` / `:::` coordinates (descriptors and --dep). Default: 3.3.0. Set to 2.13.12 for apps published only for 2.13 (e.g. smithy4s)."
@@ -1527,12 +1530,90 @@ def lookupApp(
 def parseCoursierDep(coord: String, scalaBinary: String): Dependency =
   Dependency.parse(coord, ScalaVersion.of(scalaBinary))
 
+/** Read the `Main-Class` attribute from a JAR's `META-INF/MANIFEST.MF`, if
+  * present. Returns None if the JAR has no manifest or no `Main-Class`.
+  */
+def readMainClassFromJar(file: File): IO[Option[String]] =
+  IO.blocking {
+    val jar = new JarFile(file)
+    try
+      Option(jar.getManifest)
+        .flatMap(m => Option(m.getMainAttributes.getValue("Main-Class")))
+    finally jar.close()
+  }
+
+/** The URL suffix produced by Coursier for a `(group, artifact, version)`
+  * coord: `<group-as-path>/<artifact>/<version>/<artifact>-<version>.jar`. Used
+  * to pick out the user's directly-passed deps from a transitive resolution
+  * result.
+  */
+def jarUrlSuffix(dep: Dependency): String = {
+  val m = dep.getModule
+  val group = m.getOrganization.replace('.', '/')
+  val name = m.getName
+  val version = dep.getVersion
+  s"/$group/$name/$version/$name-$version.jar"
+}
+
+/** Discover `Main-Class` by inspecting the manifests of the JARs corresponding
+  * to the user-supplied direct deps. Errors if no direct dep declares a
+  * `Main-Class`, or if multiple direct deps disagree.
+  */
+def autoDiscoverMainClass(
+    parsedDeps: List[Dependency],
+    artifacts: List[(Artifact, File)]
+): IO[String] = {
+  val urlToFile = artifacts.map { case (a, f) => a.getUrl -> f }.toMap
+  val directJars: List[(Dependency, File)] = parsedDeps.flatMap { dep =>
+    val suffix = jarUrlSuffix(dep)
+    urlToFile.collectFirst {
+      case (url, file) if url.endsWith(suffix) => dep -> file
+    }
+  }
+  for {
+    _ <- IO.raiseWhen(directJars.isEmpty)(
+      new RuntimeException(
+        "Auto-discovery of --main-class failed: could not match any --dep coordinate to a resolved JAR. Pass --main-class explicitly."
+      )
+    )
+    candidates <- directJars.traverse { case (dep, file) =>
+      readMainClassFromJar(file).map(dep -> _)
+    }
+    withMain = candidates.collect { case (dep, Some(mc)) => dep -> mc }
+    result <- withMain match {
+      case Nil =>
+        IO.raiseError(
+          new RuntimeException(
+            s"Auto-discovery of --main-class failed: none of the --dep JARs declare a Main-Class in their manifest (checked: ${directJars
+                .map(_._1)
+                .mkString(", ")}). Pass --main-class explicitly."
+          )
+        )
+      case (_, mc) :: rest if rest.forall(_._2 == mc) =>
+        info(
+          s"Discovered --main-class ${C.bold}$mc${C.reset} from JAR manifest"
+        )
+          .as(mc)
+      case multiple =>
+        val listed = multiple
+          .map { case (dep, mc) => s"  - $dep -> $mc" }
+          .mkString("\n")
+        IO.raiseError(
+          new RuntimeException(
+            s"Auto-discovery of --main-class failed: --dep JARs declare conflicting Main-Class values:\n$listed\nPass --main-class explicitly."
+          )
+        )
+    }
+  } yield result
+}
+
 /** Resolve a set of coords transitively, hash all resulting JARs, and produce
-  * the `coursier-app` lockfile content.
+  * the `coursier-app` lockfile content. If `mainClass` is None, attempt to
+  * discover it from the manifest of the directly-passed deps' JARs.
   */
 def computeCoursierAppLock(
     deps: List[String],
-    mainClass: String,
+    mainClass: Option[String],
     javaOptions: List[String],
     scalaBinary: String
 )(using HashCache): IO[String] = {
@@ -1543,6 +1624,10 @@ def computeCoursierAppLock(
     _ <- info(
       s"Resolved ${C.bold}${artifacts.size}${C.reset} artifacts (transitive)"
     )
+    resolvedMainClass <- mainClass match {
+      case Some(mc) => IO.pure(mc)
+      case None     => autoDiscoverMainClass(parsedDeps, artifacts)
+    }
     _ <- step("Hashing JARs...")
     jarEntries <- artifacts
       .filter { case (artifact, _) => artifact.getUrl.endsWith(".jar") }
@@ -1555,7 +1640,7 @@ def computeCoursierAppLock(
     lock = CoursierAppLock(
       version = 8,
       kind = "coursier-app",
-      mainClass = mainClass,
+      mainClass = resolvedMainClass,
       javaOptions = javaOptions,
       dependencies = sorted
     )
@@ -1589,7 +1674,7 @@ def lockCoords(
         deps = app.dependencies ++ opts.dep
         content <- computeCoursierAppLock(
           deps,
-          mainClass,
+          Some(mainClass),
           app.javaOptions,
           opts.scalaBinary
         )
@@ -1599,25 +1684,18 @@ def lockCoords(
     case None =>
       if (opts.dep.isEmpty)
         error(
-          "Pass an app name (e.g. `scala-cli-nix lock-coords smithy4s --contrib`) or `--dep org:name:version --main-class CLASS`."
+          "Pass an app name (e.g. `scala-cli-nix lock-coords smithy4s --contrib`) or `--dep org:name:version`."
         ).as(ExitCode.Error)
       else
-        opts.mainClass match {
-          case None =>
-            error(
-              "--main-class is required when using --dep (auto-discovery from coords isn't implemented yet)."
-            ).as(ExitCode.Error)
-          case Some(mc) =>
-            for {
-              content <- computeCoursierAppLock(
-                opts.dep,
-                mc,
-                Nil,
-                opts.scalaBinary
-              )
-              _ <- writeCoordsLock(opts.output, content)
-            } yield ExitCode.Success
-        }
+        for {
+          content <- computeCoursierAppLock(
+            opts.dep,
+            opts.mainClass,
+            Nil,
+            opts.scalaBinary
+          )
+          _ <- writeCoordsLock(opts.output, content)
+        } yield ExitCode.Success
   }
 }
 

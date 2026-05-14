@@ -701,3 +701,17 @@ class GroupArtifactPathTests extends munit.FunSuite {
     assertEquals(groupArtifactPath(v1), groupArtifactPath(v2))
   }
 }
+
+class JarUrlSuffixTests extends munit.FunSuite {
+  test("plain Java coord") {
+    val dep = coursierapi.Dependency.of("org.example", "foo", "1.2.3")
+    assertEquals(jarUrlSuffix(dep), "/org/example/foo/1.2.3/foo-1.2.3.jar")
+  }
+
+  test("matches a Coursier-style URL via endsWith") {
+    val dep = coursierapi.Dependency.of("org.scalameta", "metals_2.13", "1.5.3")
+    val url =
+      "https://repo1.maven.org/maven2/org/scalameta/metals_2.13/1.5.3/metals_2.13-1.5.3.jar"
+    assert(url.endsWith(jarUrlSuffix(dep)))
+  }
+}

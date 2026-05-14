@@ -82,10 +82,10 @@ scala-cli-nix lock-coords smithy4s --contrib --scala-binary 2.13.12
 Or with raw coords, when there is no channel descriptor (or you want to pin a specific version):
 
 ```bash
-scala-cli-nix lock-coords \
-  --dep org.scalameta::metals:1.5.3 \
-  --main-class scala.meta.metals.Main
+scala-cli-nix lock-coords --dep org.scalameta::metals:1.5.3
 ```
+
+`--main-class` is auto-discovered from the `Main-Class` attribute in the directly-passed JARs' `META-INF/MANIFEST.MF`. Pass it explicitly with `--main-class CLASS` if none of the `--dep` JARs ship a manifest entry, or if multiple disagree.
 
 `--scala-binary` (default `3.3.0`) decides how `::` / `:::` Scala-suffixed coordinates expand — bump it to `2.13.12` for apps that only ship 2.13 artifacts.
 

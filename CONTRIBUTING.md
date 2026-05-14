@@ -233,7 +233,7 @@ A second, narrower lockfile shape: package a JVM app straight from Coursier coor
 Inputs accepted:
 
 - A positional app name. The CLI looks it up in the default channel (https://github.com/coursier/apps under `apps/resources/<name>.json`); with `--contrib`, it also searches the contrib channel (`apps-contrib/resources/<name>.json`). This mirrors `cs install --contrib NAME`. The descriptor's `dependencies` and `mainClass` drive the lock.
-- One or more `--dep org:name:version` (or `org::name::version` Scala-suffixed), plus `--main-class CLASS`. Channel-free path.
+- One or more `--dep org:name:version` (or `org::name::version` Scala-suffixed). `--main-class CLASS` is optional: if omitted, the lock command opens each directly-passed JAR's `META-INF/MANIFEST.MF` and uses its `Main-Class` attribute. It errors if no `--dep` JAR declares one (or multiple disagree); pass `--main-class` explicitly in that case. Channel-free path.
 
 `--scala-binary <ver>` (default `3.3.0`) selects how `::`/`:::` coordinates expand — set it to `2.13.12` for apps that only ship 2.13 artifacts (e.g. smithy4s).
 
