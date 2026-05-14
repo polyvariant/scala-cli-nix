@@ -98,7 +98,8 @@ case class ExportDependency(
 case class ExportScope(
     sources: List[String],
     resourceDirs: List[String],
-    dependencies: List[ExportDependency]
+    dependencies: List[ExportDependency],
+    resolvers: List[String]
 )
 object ExportScope {
   given Decoder[ExportScope] = Decoder.instance { c =>
@@ -106,7 +107,8 @@ object ExportScope {
       sources <- c.get[List[String]]("sources")
       resourceDirs <- c.getOrElse[List[String]]("resourceDirs")(Nil)
       deps <- c.getOrElse[List[ExportDependency]]("dependencies")(Nil)
-    } yield ExportScope(sources, resourceDirs, deps)
+      resolvers <- c.getOrElse[List[String]]("resolvers")(Nil)
+    } yield ExportScope(sources, resourceDirs, deps, resolvers)
   }
 }
 
@@ -306,12 +308,52 @@ def readFile(path: Path): IO[String] =
 
 // --- Coursier helpers ---
 
-def fetchArtifacts(deps: Dependency*): IO[List[(Artifact, File)]] =
+/** Extra Maven repositories to add to every Coursier fetch — populated from
+  * `//> using repository` directives (read from scala-cli's export JSON) on the
+  * `lock` path, and from `--repository` flags on `lock-coords`. Maven Central
+  * is always implicitly included by Coursier's defaults; we only add the
+  * non-default repos here.
+  *
+  * Credentials are loaded by Coursier itself from
+  * `~/.config/coursier/credentials.properties` (and `COURSIER_CREDENTIALS` /
+  * `COURSIER_CONFIG_DIR`), so we don't have to wire them through.
+  */
+case class Repos(urls: List[String]) {
+  def mavenRepositories: List[MavenRepository] =
+    urls.distinct.map(MavenRepository.of(_))
+}
+object Repos {
+  val empty: Repos = Repos(Nil)
+}
+
+/** Filter scala-cli's `resolvers[]` (from `export --json`) down to extra Maven
+  * repos worth passing to Coursier:
+  *
+  *   - Only `http(s)://` URLs — Ivy / local-file resolvers can't be expressed
+  *     through `coursierapi.MavenRepository`, and local user caches aren't
+  *     reproducible inputs anyway.
+  *   - Maven Central is dropped because Coursier's defaults already include
+  *     it; re-adding it would log a duplicate.
+  *   - Order is preserved, duplicates removed.
+  */
+def extraRepoUrlsFromResolvers(resolvers: List[String]): List[String] = {
+  val mavenCentralUrl = "https://repo1.maven.org/maven2"
+  resolvers
+    .filter(url => url.startsWith("https://") || url.startsWith("http://"))
+    .filterNot(_.stripSuffix("/") == mavenCentralUrl)
+    .distinct
+}
+
+def fetchArtifacts(
+    deps: Dependency*
+)(using repos: Repos): IO[List[(Artifact, File)]] =
   IO.blocking {
-    val result = Fetch
-      .create()
-      .addDependencies(deps*)
-      .fetchResult()
+    val base = Fetch.create().addDependencies(deps*)
+    val withRepos = repos.mavenRepositories match {
+      case Nil => base
+      case rs  => base.addRepositories(rs*)
+    }
+    val result = withRepos.fetchResult()
     result.getArtifacts().asScala.toList.map(e => (e.getKey, e.getValue))
   }
 
@@ -639,7 +681,7 @@ def parseImportedBoms(
 def collectDeclaredPoms(
     resolvedPomPaths: List[Path],
     resolvedUrls: Set[String]
-)(using HashCache): IO[List[ArtifactEntry]] =
+)(using HashCache, Repos): IO[List[ArtifactEntry]] =
   resolvedPomPaths.flatTraverse(extractDeclaredDeps).flatMap { allDeclared =>
     val candidates = allDeclared.distinct
       .filterNot { (_, _, v) => v.contains("$") }
@@ -664,7 +706,7 @@ def collectDeclaredPoms(
   */
 def collectEntriesNoRecurse(
     artifacts: List[(Artifact, File)]
-)(using HashCache): IO[List[ArtifactEntry]] =
+)(using HashCache, Repos): IO[List[ArtifactEntry]] =
   artifacts
     .flatTraverse { (artifact, file) =>
       val url = artifact.getUrl
@@ -698,7 +740,7 @@ def collectEntriesNoRecurse(
 
 def collectEntries(
     artifacts: List[(Artifact, File)]
-)(using HashCache): IO[List[ArtifactEntry]] = {
+)(using HashCache, Repos): IO[List[ArtifactEntry]] = {
   val resolved: IO[(List[ArtifactEntry], List[Path])] =
     artifacts.foldLeftM((List.empty[ArtifactEntry], List.empty[Path])) {
       case ((entries, poms), (artifact, file)) =>
@@ -861,6 +903,10 @@ case class LockCoordsOptions(
     )
     channel: List[String] = Nil,
     @HelpMessage(
+      "Extra Maven repository URL to add to Coursier resolution (e.g. an Artifactory virtual repo). Repeatable. Credentials are loaded from ~/.config/coursier/credentials.properties (or COURSIER_CREDENTIALS / COURSIER_CONFIG_DIR)."
+    )
+    repository: List[String] = Nil,
+    @HelpMessage(
       "Main class for raw --dep mode. Optional: if omitted, auto-discovered from the Main-Class attribute in the --dep JARs' META-INF/MANIFEST.MF."
     )
     mainClass: Option[String] = None,
@@ -913,7 +959,7 @@ def computeLock(inputs: List[String])(using HashCache): IO[String] = {
         )
     )
     firstMainScope = firstExport.scopes
-      .getOrElse("main", ExportScope(Nil, Nil, Nil))
+      .getOrElse("main", ExportScope(Nil, Nil, Nil, Nil))
     sources = firstMainScope.sources.map(stripCwd(cwd))
     resourceDirs = firstMainScope.resourceDirs.map(stripCwd(cwd))
 
@@ -987,11 +1033,18 @@ private def computeTargetLockContent(
 )(using HashCache): IO[TargetLock] = {
   val scalaVersion = export_.scalaVersion
   val scalaMajor = scalaVersion.takeWhile(_ != '.')
-  val mainScope = export_.scopes.getOrElse("main", ExportScope(Nil, Nil, Nil))
+  val mainScope =
+    export_.scopes.getOrElse("main", ExportScope(Nil, Nil, Nil, Nil))
   val testScope = export_.scopes.get("test")
   val deps = mainScope.dependencies.map { d =>
     s"${d.groupId}:${d.artifactId.fullName}:${d.version}"
   }
+  // scala-cli reports the active resolver URLs (including ones added via
+  // `//> using repository <url>`). We feed the non-default Maven repos into
+  // every Coursier `Fetch` for this target so transitive resolution can find
+  // artifacts that only live in private/Artifactory repos.
+  val nonDefaultRepoUrls = extraRepoUrlsFromResolvers(mainScope.resolvers)
+  given Repos = Repos(nonDefaultRepoUrls)
 
   scalaMajor match {
     case "3" | "2" =>
@@ -1031,6 +1084,9 @@ private def computeTargetLockContent(
         _ <- info(s"Scala version: ${C.bold}$scalaVersion${C.reset}")
         _ <- info(s"Platform: ${C.bold}${target.platformLock}${C.reset}")
         _ <- info(s"Found ${C.bold}${deps.size}${C.reset} dependencies")
+        _ <- nonDefaultRepoUrls.traverse_(url =>
+          info(s"Extra repository: ${C.bold}$url${C.reset}")
+        )
 
         _ <- step("Fetching compiler dependencies...")
         compilerArtifacts <- fetchArtifacts(compilerArtifact)
@@ -1531,7 +1587,10 @@ private def fetchAppFromBuiltin(
   * coord — Fetch may still return other JARs from the resolution (e.g. parent
   * BOMs) even with transitivity off.
   */
-private def fetchChannelJar(org: String, name: String): IO[File] = {
+private def fetchChannelJar(
+    org: String,
+    name: String
+)(using Repos): IO[File] = {
   val coord = s"$org:$name"
   val dep = Dependency
     .of(org, name, "latest.release")
@@ -1576,7 +1635,7 @@ private def fetchAppFromMaven(
     org: String,
     artifact: String,
     name: String
-): IO[Option[ContribChannelApp]] =
+)(using Repos): IO[Option[ContribChannelApp]] =
   fetchChannelJar(org, artifact).flatMap { jar =>
     readJarEntry(jar, s"$name.json").flatMap {
       case None       => IO.pure(None)
@@ -1591,7 +1650,7 @@ private def fetchAppFromMaven(
 def fetchAppFromChannel(
     channel: Channel,
     name: String
-): IO[Option[ContribChannelApp]] =
+)(using Repos): IO[Option[ContribChannelApp]] =
   channel match {
     case Channel.Builtin(_, raw)   => fetchAppFromBuiltin(raw, name)
     case Channel.Maven(org, aname) => fetchAppFromMaven(org, aname, name)
@@ -1606,7 +1665,7 @@ def lookupApp(
     name: String,
     includeContrib: Boolean,
     userChannels: List[Channel]
-): IO[ContribChannelApp] = {
+)(using Repos): IO[ContribChannelApp] = {
   val channels =
     Channel.Default ::
       (if (includeContrib) List(Channel.Contrib) else Nil) :::
@@ -1724,7 +1783,7 @@ def computeCoursierAppLock(
     mainClass: Option[String],
     javaOptions: List[String],
     scalaBinary: String
-)(using HashCache): IO[String] = {
+)(using HashCache, Repos): IO[String] = {
   val parsedDeps = deps.map(parseCoursierDep(_, scalaBinary))
   for {
     _ <- step("Resolving Coursier dependencies...")
@@ -1759,59 +1818,65 @@ def lockCoords(
     opts: LockCoordsOptions,
     appName: Option[String]
 ): IO[ExitCode] = withHashCache {
-  appName match {
-    case Some(name) =>
-      for {
-        userChannels <- IO.fromEither(
-          opts.channel
-            .traverse(Channel.parseMaven)
-            .leftMap(new RuntimeException(_))
-        )
-        channelLabels =
-          ("default" :: (if (opts.contrib) List("contrib") else Nil)) :::
-            userChannels.map(_.label)
-        _ <- info(
-          s"Looking up ${C.bold}$name${C.reset} in channels (${channelLabels.mkString(" + ")})..."
-        )
-        app <- lookupApp(name, opts.contrib, userChannels)
-        mainClass <- app.mainClass match {
-          // Descriptors mark optional mainClass fields with a trailing `?`
-          // (e.g. scalafmt's "org.scalafmt.cli.Cli?"); we just strip it.
-          case Some(mc) => IO.pure(mc.stripSuffix("?"))
-          case None     =>
-            IO.raiseError(
-              new RuntimeException(
-                s"App $name has no mainClass field in its descriptor. Use raw `--dep ... --main-class ...` instead."
-              )
-            )
-        }
-        // Descriptor's deps win; CLI --dep is treated as additive.
-        deps = app.dependencies ++ opts.dep
-        content <- computeCoursierAppLock(
-          deps,
-          Some(mainClass),
-          app.javaOptions,
-          opts.scalaBinary
-        )
-        _ <- writeCoordsLock(opts.output, content)
-      } yield ExitCode.Success
-
-    case None =>
-      if (opts.dep.isEmpty)
-        error(
-          "Pass an app name (e.g. `scala-cli-nix lock-coords smithy4s --contrib`) or `--dep org:name:version`."
-        ).as(ExitCode.Error)
-      else
+  given Repos = Repos(opts.repository.distinct)
+  for {
+    _ <- opts.repository.distinct.traverse_(url =>
+      info(s"Extra repository: ${C.bold}$url${C.reset}")
+    )
+    code <- appName match {
+      case Some(name) =>
         for {
+          userChannels <- IO.fromEither(
+            opts.channel
+              .traverse(Channel.parseMaven)
+              .leftMap(new RuntimeException(_))
+          )
+          channelLabels =
+            ("default" :: (if (opts.contrib) List("contrib") else Nil)) :::
+              userChannels.map(_.label)
+          _ <- info(
+            s"Looking up ${C.bold}$name${C.reset} in channels (${channelLabels.mkString(" + ")})..."
+          )
+          app <- lookupApp(name, opts.contrib, userChannels)
+          mainClass <- app.mainClass match {
+            // Descriptors mark optional mainClass fields with a trailing `?`
+            // (e.g. scalafmt's "org.scalafmt.cli.Cli?"); we just strip it.
+            case Some(mc) => IO.pure(mc.stripSuffix("?"))
+            case None     =>
+              IO.raiseError(
+                new RuntimeException(
+                  s"App $name has no mainClass field in its descriptor. Use raw `--dep ... --main-class ...` instead."
+                )
+              )
+          }
+          // Descriptor's deps win; CLI --dep is treated as additive.
+          deps = app.dependencies ++ opts.dep
           content <- computeCoursierAppLock(
-            opts.dep,
-            opts.mainClass,
-            Nil,
+            deps,
+            Some(mainClass),
+            app.javaOptions,
             opts.scalaBinary
           )
           _ <- writeCoordsLock(opts.output, content)
         } yield ExitCode.Success
-  }
+
+      case None =>
+        if (opts.dep.isEmpty)
+          error(
+            "Pass an app name (e.g. `scala-cli-nix lock-coords smithy4s --contrib`) or `--dep org:name:version`."
+          ).as(ExitCode.Error)
+        else
+          for {
+            content <- computeCoursierAppLock(
+              opts.dep,
+              opts.mainClass,
+              Nil,
+              opts.scalaBinary
+            )
+            _ <- writeCoordsLock(opts.output, content)
+          } yield ExitCode.Success
+    }
+  } yield code
 }
 
 private def writeCoordsLock(

@@ -742,3 +742,96 @@ class ChannelParseMavenTests extends munit.FunSuite {
     assertEquals(ch.label, "org.example:my-channel")
   }
 }
+
+class ExtraRepoUrlsFromResolversTests extends munit.FunSuite {
+  test("empty input -> empty") {
+    assertEquals(extraRepoUrlsFromResolvers(Nil), Nil)
+  }
+
+  test("keeps http(s) entries verbatim") {
+    assertEquals(
+      extraRepoUrlsFromResolvers(
+        List(
+          "https://artifactory.example.com/maven-virtual",
+          "http://internal.repo/maven"
+        )
+      ),
+      List(
+        "https://artifactory.example.com/maven-virtual",
+        "http://internal.repo/maven"
+      )
+    )
+  }
+
+  test("drops ivy: and file: resolvers") {
+    val resolvers = List(
+      "https://artifactory.example.com/maven-virtual",
+      "ivy:file:///Users/x/.ivy2/local/[org]/[module]/...",
+      "file:///opt/local-repo"
+    )
+    assertEquals(
+      extraRepoUrlsFromResolvers(resolvers),
+      List("https://artifactory.example.com/maven-virtual")
+    )
+  }
+
+  test("drops Maven Central (with or without trailing slash)") {
+    val resolvers = List(
+      "https://repo1.maven.org/maven2",
+      "https://repo1.maven.org/maven2/",
+      "https://artifactory.example.com/maven-virtual"
+    )
+    assertEquals(
+      extraRepoUrlsFromResolvers(resolvers),
+      List("https://artifactory.example.com/maven-virtual")
+    )
+  }
+
+  test("dedupes while preserving order") {
+    val resolvers = List(
+      "https://b.example.com/maven",
+      "https://a.example.com/maven",
+      "https://b.example.com/maven"
+    )
+    assertEquals(
+      extraRepoUrlsFromResolvers(resolvers),
+      List("https://b.example.com/maven", "https://a.example.com/maven")
+    )
+  }
+}
+
+class ExportScopeResolversTests extends munit.FunSuite {
+
+  private def decodeScope(json: String): ExportScope =
+    io.circe.parser
+      .parse(json)
+      .flatMap(_.as[ExportScope])
+      .fold(e => fail(s"decode failed: $e"), identity)
+
+  test("resolvers field decodes to a List[String]") {
+    val scope = decodeScope(
+      """{
+        |  "sources": [],
+        |  "dependencies": [],
+        |  "resolvers": [
+        |    "https://repo1.maven.org/maven2",
+        |    "https://artifactory.example.com/maven-virtual"
+        |  ]
+        |}""".stripMargin
+    )
+    assertEquals(
+      scope.resolvers,
+      List(
+        "https://repo1.maven.org/maven2",
+        "https://artifactory.example.com/maven-virtual"
+      )
+    )
+  }
+
+  test("missing resolvers field decodes to empty list (back-compat)") {
+    val scope = decodeScope(
+      """{ "sources": [], "dependencies": [] }"""
+    )
+    assertEquals(scope.resolvers, Nil)
+  }
+}

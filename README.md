@@ -217,6 +217,24 @@ Worked examples in this repo (`examples/scala-native-docker`, `examples/scala3-j
 
 `scala-cli-nix lock` keeps a per-user hash cache at `$XDG_CACHE_HOME/scala-cli-nix/hashes.json` (defaulting to `~/.cache/scala-cli-nix/hashes.json`). Each artifact in the Coursier cache is hashed once and reused on subsequent locks as long as its size and mtime haven't changed, so re-running `lock` after a small dep change avoids re-reading every JAR. Deleting the cache file is harmless — it'll be rebuilt on the next run.
 
+## Custom Maven repositories (Artifactory, etc.)
+
+Declare extra Maven repositories with `//> using repository <URL>` in your sources — scala-cli reports them in its export output, and `scala-cli-nix lock` adds them to every Coursier `Fetch`. For `lock-coords` (no source files), use `--repository <URL>` (repeatable).
+
+Credentials for lock-time resolution are loaded automatically from `~/.config/coursier/credentials.properties` (Coursier's standard path — also honors `COURSIER_CREDENTIALS` and `COURSIER_CONFIG_DIR`). Example properties file:
+
+```properties
+my-artifactory.host = artifactory.example.com
+my-artifactory.username = svc-account
+my-artifactory.password = $env:ARTIFACTORY_TOKEN
+```
+
+At `nix build` time each lockfile URL is fetched directly by `pkgs.fetchurl`. If the repo requires auth, configure Nix's [`netrc-file`](https://nix.dev/manual/nix/2.18/command-ref/conf-file#conf-netrc-file) or place credentials in `~/.netrc`:
+
+```
+machine artifactory.example.com login svc-account password <token>
+```
+
 ## GitHub Actions
 
 scala-cli-nix ships a reusable composite action that regenerates `scala.lock.json` on every pull request and commits the result if anything changed.

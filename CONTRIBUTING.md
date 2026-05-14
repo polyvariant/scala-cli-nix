@@ -14,6 +14,16 @@ Implemented in `cli/scala-cli-nix.scala` (Scala 3). The CLI is itself built by `
 4. For each JAR, the adjacent POM is found in the Coursier cache. Parent POMs are discovered by walking the `<parent>` chain, parsed with `scala-xml`. SHA-256 hashes are computed in-process via `java.security.MessageDigest` — no `nix hash file` needed. Hashes are cached at `$XDG_CACHE_HOME/scala-cli-nix/hashes.json` (default `~/.cache/scala-cli-nix/hashes.json`), keyed by absolute path with size+mtime as the freshness stamp; the cache is loaded once per `lock`/`init` invocation and persisted on the way out (including on failure). Threaded through the `sha256Base64` call sites as a `using HashCache` parameter — see `class HashCache` and `withHashCache` in `cli/scala-cli-nix.scala`.
 5. The output is `scala.lock.json` with one section per target.
 
+#### Custom Maven repositories (e.g. Artifactory)
+
+`//> using repository <URL>` in the project sources is picked up by scala-cli and reported in the `resolvers[]` field of `export --json`. The lock command reads that list, filters to `http(s)://` entries (Ivy and local resolvers are skipped — Coursier's interface only accepts Maven repos, and local caches aren't reproducible inputs), and passes each URL as a `MavenRepository.of(...)` to every Coursier `Fetch` for that target. The non-default repos are threaded through `fetchArtifacts` via a `using Repos` context.
+
+Credentials for private repos are loaded *automatically* by Coursier from `~/.config/coursier/credentials.properties` (or the path pointed to by `COURSIER_CREDENTIALS` / `COURSIER_CONFIG_DIR`). The CLI does not need to call `addFileCredentials` explicitly — `Fetch.create()` already picks up those defaults via the underlying `coursier.cache.CacheDefaults`.
+
+At Nix build time, `pkgs.fetchurl` fetches each lockfile URL directly. If the Artifactory repo requires auth, configure Nix's standard `netrc-file` (or place credentials in `~/.netrc`) — the FOD download then succeeds against the same URL the lock recorded. No changes to `lib.nix` are needed.
+
+For `lock-coords` (no scala-cli source files, so no `resolvers[]`), pass extra repos via repeatable `--repository <URL>` flags.
+
 #### Lockfile format (`scala.lock.json`, version 8)
 
 The lockfile uses a multi-target format. Each target (a platform/Scala version combination) has its own section under the `targets` key.
