@@ -6,42 +6,27 @@
 }:
 let
   hello-http4s = pkgs.callPackage ../examples/hello-http4s/derivation.nix { };
-
-  mkHelloHttp4sService = { platform, port }: {
-    description = "hello-http4s ${platform} http4s server";
-    wantedBy = [ "multi-user.target" ];
-    after = [ "network.target" ];
-    environment = {
-      PLATFORM = platform;
-      PORT = toString port;
-    };
-    serviceConfig = {
-      ExecStart = lib.getExe hello-http4s.${platform};
-      Restart = "on-failure";
-      RestartSec = "10s";
-      DynamicUser = true;
-    };
-  };
 in
 {
   imports = [
     (modulesPath + "/profiles/qemu-guest.nix")
+    ./modules/http-apps.nix
   ];
 
-  systemd.services.hello-http4s-native = mkHelloHttp4sService { platform = "native"; port = 8080; };
-  systemd.services.hello-http4s-jvm = mkHelloHttp4sService { platform = "jvm"; port = 8081; };
-
-  services.caddy = {
-    enable = true;
-    virtualHosts."hello-native.scala-cli-nix.kubukoz.com".extraConfig = ''
-      reverse_proxy 127.0.0.1:8080
-    '';
-    virtualHosts."hello-jvm.scala-cli-nix.kubukoz.com".extraConfig = ''
-      reverse_proxy 127.0.0.1:8081
-    '';
+  services.http-apps = {
+    hello-native = {
+      package = hello-http4s.native;
+      domain = "hello-native.scala-cli-nix.kubukoz.com";
+      port = 8080;
+      environment.PLATFORM = "native";
+    };
+    hello-jvm = {
+      package = hello-http4s.jvm;
+      domain = "hello-jvm.scala-cli-nix.kubukoz.com";
+      port = 8081;
+      environment.PLATFORM = "jvm";
+    };
   };
-
-  networking.firewall.allowedTCPPorts = [ 80 443 ];
 
   # Hetzner cloud cx-series boots in BIOS mode (not UEFI). Disko needs a
   # 1MiB bios_grub partition for GRUB's stage 1.5 to live in on a GPT disk,
