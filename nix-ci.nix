@@ -12,6 +12,10 @@
     server01 = {
       package = "packages.x86_64-linux.deploy-server01";
       branches = "default";
+      # Run from the checked-out repo so `.#server01` (passed to
+      # nixos-rebuild --flake) resolves to this flake instead of an empty
+      # tmp dir.
+      in-repo = true;
       ssh-keys = [{
         secret = "DEPLOY_SSH_KEY";
         public-key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKtOMFEJkH37S3sHD3WS9XScOyx1b2noFgQ4edrxOcxE nix-ci@scala-cli-nix";
