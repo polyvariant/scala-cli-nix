@@ -19,9 +19,11 @@ writeShellApplication {
 
     export NIX_SSHOPTS="-i $DEPLOY_SSH_KEY -o UserKnownHostsFile=$known_hosts -o StrictHostKeyChecking=yes"
 
+    # No --build-host: build locally in-process. (--build-host localhost
+    # would still ssh to itself and our pinned known_hosts only covers
+    # server01.)
     exec nixos-rebuild switch \
       --flake "''${FLAKE:-.}#server01" \
-      --target-host root@${targetHost} \
-      --build-host localhost
+      --target-host root@${targetHost}
   '';
 }
