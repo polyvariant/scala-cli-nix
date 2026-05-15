@@ -104,6 +104,7 @@
           deploy-server01 = pkgs.callPackage ./hetzner-nixos/deploy.nix {
             targetHost = "178.105.118.88";
             hostKey = "178.105.118.88 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII/gUJ/hYY4swoEvQTxw7OAGpj3SQxTm9kg7gk7xOgax";
+            systemPath = self.nixosConfigurations.server01.config.system.build.toplevel;
           };
         }
       );

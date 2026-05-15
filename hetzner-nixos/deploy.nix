@@ -1,6 +1,11 @@
-{ lib, writeShellApplication, nixos-rebuild, openssh, coreutils, hostKey, targetHost }:
+{ lib, writeShellApplication, nixos-rebuild, openssh, coreutils, hostKey, targetHost, systemPath }:
 
 # `nix run`-able wrapper that drives nixos-rebuild against server01.
+#
+# The target system closure (`systemPath`) is built by Nix as a regular input
+# to this derivation, so the deploy script gets a pre-built store path and
+# runs `nixos-rebuild switch --store-path` — no flake evaluation at runtime,
+# no checkout needed. nix-ci can `nix run` this from any working directory.
 #
 # nix-ci sets DEPLOY_SSH_KEY to a path holding the private key
 # (see ssh-keys config in nix-ci.nix). Locally you can run it the same way:
@@ -19,11 +24,8 @@ writeShellApplication {
 
     export NIX_SSHOPTS="-i $DEPLOY_SSH_KEY -o UserKnownHostsFile=$known_hosts -o StrictHostKeyChecking=yes"
 
-    # No --build-host: build locally in-process. (--build-host localhost
-    # would still ssh to itself and our pinned known_hosts only covers
-    # server01.)
     exec nixos-rebuild switch \
-      --flake "''${FLAKE:-.}#server01" \
+      --store-path ${systemPath} \
       --target-host root@${targetHost}
   '';
 }
