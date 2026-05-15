@@ -314,6 +314,12 @@ def writeFile(path: Path, content: String): IO[Unit] =
 def readFile(path: Path): IO[String] =
   Files[IO].readUtf8(path).compile.string
 
+def absolutePath(s: String): IO[Path] = {
+  val p = Path(s)
+  if (p.isAbsolute) IO.pure(p)
+  else Files[IO].currentWorkingDirectory.map(_ / p)
+}
+
 // --- Coursier helpers ---
 
 /** Extra Maven repositories to add to every Coursier fetch — populated from
@@ -892,7 +898,12 @@ def targetKey(target: Target, allTargets: List[Target]): String = {
 
 // --- Option case classes ---
 
-case class LockOptions()
+case class LockOptions(
+    @HelpMessage(
+      "Source directory to lock. When set, scala-cli reads sources from <src> and the lockfile records source paths relative to <src>. The lockfile is still written to the current working directory. Useful for locking projects whose sources live outside the lockfile's directory (e.g. a Nix store path)."
+    )
+    src: Option[String] = None
+)
 case class InitOptions(
     ref: Option[String] = None
 )
@@ -935,12 +946,26 @@ val lockfilePrinter: Printer =
 
 /** Compute lockfile content without writing it. Always recomputes from scratch.
   */
-def computeLock(inputs: List[String])(using HashCache): IO[String] = {
-  val inputArgs = if (inputs.isEmpty) List(".") else inputs
+def computeLock(inputs: List[String], sourceRoot: Option[Path])(using HashCache): IO[String] = {
+  // When `--src` is set, relative positional args (e.g. specific files to lock)
+  // are resolved under the source root rather than cwd, so that
+  // `scn lock --src /nix/store/xxx foo.scala` locks `xxx/foo.scala`. With no
+  // positionals, the source root itself is the input. Without `--src`, behavior
+  // is unchanged: positionals stay verbatim, or default to ".".
+  val inputArgs = sourceRoot match {
+    case Some(root) if inputs.isEmpty => List(root.toString)
+    case Some(root) =>
+      inputs.map { i =>
+        val p = Path(i)
+        if (p.isAbsolute) i else (root / p).toString
+      }
+    case None => if (inputs.nonEmpty) inputs else List(".")
+  }
 
   for {
     scalaCli <- resolveScalaCli
     cwd <- Files[IO].currentWorkingDirectory
+    basePath = sourceRoot.getOrElse(cwd)
 
     targets <- listTargets(scalaCli, inputArgs)
 
@@ -968,12 +993,12 @@ def computeLock(inputs: List[String])(using HashCache): IO[String] = {
     )
     firstMainScope = firstExport.scopes
       .getOrElse("main", ExportScope(Nil, Nil, Nil, Nil, Nil))
-    sources = firstMainScope.sources.map(stripCwd(cwd))
-    resourceDirs = firstMainScope.resourceDirs.map(stripCwd(cwd))
+    sources = firstMainScope.sources.map(stripBase(basePath))
+    resourceDirs = firstMainScope.resourceDirs.map(stripBase(basePath))
 
     targetLocks <- targets.traverse { target =>
       val key = targetKey(target, targets)
-      computeTargetLock(scalaCli, inputArgs, cwd, target, key).map(key -> _)
+      computeTargetLock(scalaCli, inputArgs, basePath, target, key).map(key -> _)
     }
 
     lockFile = LockFile(
@@ -988,7 +1013,7 @@ def computeLock(inputs: List[String])(using HashCache): IO[String] = {
 private def computeTargetLock(
     scalaCli: String,
     inputArgs: List[String],
-    cwd: Path,
+    basePath: Path,
     target: Target,
     key: String
 )(using HashCache): IO[TargetLock] = {
@@ -1017,7 +1042,7 @@ private def computeTargetLock(
     result <- computeTargetLockContent(
       scalaCli,
       inputArgs,
-      cwd,
+      basePath,
       target,
       key,
       export_,
@@ -1026,14 +1051,14 @@ private def computeTargetLock(
   } yield result
 }
 
-private def stripCwd(cwd: Path)(s: String): String =
-  s.stripPrefix(cwd.toString + "/")
-    .stripPrefix("/private" + cwd.toString + "/")
+private def stripBase(base: Path)(s: String): String =
+  s.stripPrefix(base.toString + "/")
+    .stripPrefix("/private" + base.toString + "/")
 
 private def computeTargetLockContent(
     scalaCli: String,
     inputArgs: List[String],
-    cwd: Path,
+    basePath: Path,
     target: Target,
     key: String,
     export_ : ExportInfo,
@@ -1149,8 +1174,8 @@ private def computeTargetLockContent(
               )
               testEntries <- collectEntries(testArtifacts)
             } yield TestLock(
-              sources = tScope.sources.map(stripCwd(cwd)),
-              resourceDirs = tScope.resourceDirs.map(stripCwd(cwd)),
+              sources = tScope.sources.map(stripBase(basePath)),
+              resourceDirs = tScope.resourceDirs.map(stripBase(basePath)),
               libraryDependencies = testEntries
             )
           }
@@ -1196,9 +1221,10 @@ def withHashCache[A](body: HashCache ?=> IO[A]): IO[A] =
     }
   } yield result
 
-def lock(inputs: List[String]): IO[ExitCode] = withHashCache {
+def lock(inputs: List[String], sourceRoot: Option[String]): IO[ExitCode] = withHashCache {
   for {
-    content <- computeLock(inputs)
+    resolvedRoot <- sourceRoot.traverse(absolutePath)
+    content <- computeLock(inputs, resolvedRoot)
     cwd <- Files[IO].currentWorkingDirectory
     lockfilePath = cwd / "scala.lock.json"
     existingContent <- Files[IO]
@@ -1239,7 +1265,7 @@ def init(inputs: List[String], ref: Option[String]): IO[ExitCode] =
       if (lockExists)
         info(
           s"${C.bold}scala.lock.json${C.reset} already exists, running ${C.bold}lock${C.reset} instead."
-        ) *> lock(inputs)
+        ) *> lock(inputs, sourceRoot = None)
       else if (inputs.nonEmpty)
         doInit(cwd, inputs, ref)
       else
@@ -1415,7 +1441,7 @@ private def doInit(
     derivation <- prepareDerivation(isCross)
     flake <- prepareFlake(isCross, scalaCliNixUrl)
     _ <- errln("")
-    lockContent <- computeLock(inputs)
+    lockContent <- computeLock(inputs, sourceRoot = None)
     pendingFiles =
       derivation._1 ++ flake._1 ++ List(
         (cwd / "scala.lock.json") -> lockContent
@@ -1915,7 +1941,7 @@ object ScalaCliNix extends CommandsEntryPoint {
   private object LockCommand extends Command[LockOptions] {
     override def name: String = "lock"
     override def run(options: LockOptions, args: RemainingArgs): Unit =
-      runIO(lock(args.remaining.toList))
+      runIO(lock(args.remaining.toList, options.src))
   }
 
   private object LockCoordsCommand extends Command[LockCoordsOptions] {

@@ -182,6 +182,11 @@
           example-scalafmt = pkgs.callPackage ./examples/scalafmt/derivation.nix { };
           example-smithy4s = pkgs.callPackage ./examples/smithy4s/derivation.nix { };
 
+          # Community builds: third-party scala-cli projects packaged here
+          # because they don't ship their own flake. Lockfiles are generated
+          # via `scn lock --src <path>` against a pinned upstream revision.
+          community-scala-monitor = pkgs.callPackage ./community/scala-monitor/derivation.nix { };
+
           # Build a runCommand that runs `<pkg>/bin/<binName>` and asserts its
           # stdout equals `expected`. `binName` defaults to the check key,
           # which holds for every example whose pname matches its check name;
@@ -236,7 +241,7 @@
           # server first, CLI second) but still exits 0; scalafmt prints
           # "scalafmt <version>"; smithy4s' bare invocation prints a
           # Decline usage banner we grep for.
-          inherit example-metals example-scalafmt example-smithy4s;
+          inherit example-metals example-scalafmt example-smithy4s community-scala-monitor;
           example-hello-http4s-jvm = example-hello-http4s.jvm;
           example-hello-http4s-native = example-hello-http4s.native;
           example-metals-test = pkgs.runCommand "check-example-metals" { } ''
@@ -259,6 +264,16 @@
             case "$output" in
               *"smithy4s generate"*) echo "OK: smithy4s usage banner printed"; touch $out ;;
               *) echo "FAIL: unexpected smithy4s output:"; echo "$output"; exit 1 ;;
+            esac
+          '';
+          community-scala-monitor-test = pkgs.runCommand "check-community-scala-monitor" { } ''
+            # mainargs prints a usage banner with the registered flags on --help.
+            # The binary may exit non-zero on --help (mainargs convention), so we
+            # check the output content rather than the exit code.
+            output=$(${community-scala-monitor}/bin/scala-monitor --help 2>&1 || true)
+            case "$output" in
+              *"Output format"*) echo "OK: scala-monitor --help launched"; touch $out ;;
+              *) echo "FAIL: unexpected scala-monitor --help output:"; echo "$output"; exit 1 ;;
             esac
           '';
         } // (

@@ -24,6 +24,15 @@ At Nix build time, `pkgs.fetchurl` fetches each lockfile URL directly. If the Ar
 
 For `lock-coords` (no scala-cli source files, so no `resolvers[]`), pass extra repos via repeatable `--repository <URL>` flags.
 
+#### Locking external sources (`lock --src <dir>`)
+
+When the project sources don't live next to the lockfile (e.g. you want to package an upstream repo as a community build, sourcing it via `fetchFromGitHub`), pass `--src <dir>` to `lock`. The CLI then:
+
+1. Runs `scala-cli list-targets`/`export` with `<dir>` as the input.
+2. Strips `<dir>` (the *source root*) from absolute source paths before writing them to the lockfile, so the recorded paths are relative to `<dir>` rather than to cwd.
+
+The lockfile is still written to the *current* working directory — that's where the corresponding `derivation.nix` lives. Paired with `src = fetchFromGitHub { ... };` in the derivation, the lockfile's relative `sources` paths match against the fetched tarball at Nix build time. See `community/scala-monitor` for a worked example.
+
 #### Lockfile format (`scala.lock.json`, version 9)
 
 The lockfile uses a multi-target format. Each target (a platform/Scala version combination) has its own section under the `targets` key.
