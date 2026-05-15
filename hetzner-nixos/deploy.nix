@@ -1,4 +1,4 @@
-{ lib, writeShellApplication, nixos-rebuild, openssh, coreutils, hostKey, targetHost, systemPath }:
+{ lib, path, writeShellApplication, nixos-rebuild, openssh, coreutils, hostKey, targetHost, systemPath }:
 
 # `nix run`-able wrapper that drives nixos-rebuild against server01.
 #
@@ -23,6 +23,13 @@ writeShellApplication {
     printf '%s\n' ${lib.escapeShellArg hostKey} > "$known_hosts"
 
     export NIX_SSHOPTS="-i $DEPLOY_SSH_KEY -o UserKnownHostsFile=$known_hosts -o StrictHostKeyChecking=yes"
+
+    # nixos-rebuild's BuildAttr resolution probes `<nixos-system>` /
+    # `<nixpkgs/nixos>` via `nix-instantiate --find-file` even with
+    # --store-path, so without NIX_PATH it errors before getting to the
+    # store-path short-circuit. Pin nixpkgs to the same one the system
+    # closure was built from; the lookup result isn't actually used.
+    export NIX_PATH="nixpkgs=${path}"
 
     exec nixos-rebuild switch \
       --store-path ${systemPath} \
