@@ -49,8 +49,8 @@ resource "hcloud_server" "server01" {
 module "deploy" {
   source = "github.com/nix-community/nixos-anywhere//terraform/all-in-one"
 
-  nixos_system_attr      = ".#nixosConfigurations.server01.config.system.build.toplevel"
-  nixos_partitioner_attr = ".#nixosConfigurations.server01.config.system.build.diskoScriptNoDeps"
+  nixos_system_attr      = "../#nixosConfigurations.server01.config.system.build.toplevel"
+  nixos_partitioner_attr = "../#nixosConfigurations.server01.config.system.build.diskoScriptNoDeps"
 
   target_host   = hcloud_server.server01.ipv4_address
   instance_id   = hcloud_server.server01.id
