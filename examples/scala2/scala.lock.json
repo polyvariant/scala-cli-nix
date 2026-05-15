@@ -56,7 +56,7 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-reflect/2.13.18/scala-reflect-2.13.18.pom"
         }
       ],
-      "exportHash": "852059c258cfcb2a7d52dac41749017c23e7b3d3",
+      "exportHash": "19299f20a826799297da497a234de3c10ac49798",
       "libraryDependencies": [
         {
           "sha256": "c4RaWVQ0aejmhPIZG0gvg+F0KFU2L/ZtA7cNW0fLB0w=",
@@ -119,5 +119,5 @@
       "scalaVersion": "2.13.18"
     }
   },
-  "version": 8
+  "version": 9
 }

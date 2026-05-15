@@ -377,7 +377,7 @@
           "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.12/3.2.19/scalatest_2.12-3.2.19.pom"
         }
       ],
-      "exportHash": "ebb6ff56d51b5417aaee3297ff3bdea271dc1777",
+      "exportHash": "b624deb1a9ef4bb9afddf17f2048151b43907af7",
       "libraryDependencies": [
         {
           "sha256": "i1FkxL4teoZjWWa0GaCLOT5Ys8e8DK+1AuDzQkhyK04=",
@@ -770,7 +770,7 @@
           "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.12/3.2.19/scalatest_2.12-3.2.19.pom"
         }
       ],
-      "exportHash": "c1c6c8579628ac29a8fe1c4b6812c87cdf7f2585",
+      "exportHash": "e8dff9074ff10222eaa69117f4291e420c1a8f83",
       "libraryDependencies": [
         {
           "sha256": "FWneZDfXHoeIBzAvjhsGoGti0hfNSjDoAZyVQ9ZoPf8=",
@@ -1230,10 +1230,6 @@
         }
       ],
       "native": {
-        "compilerPlugins": [
-        ],
-        "runtimeDependencies": [
-        ],
         "scalaNativeVersion": "0.5.11",
         "toolingDependencies": [
           {
@@ -1498,5 +1494,5 @@
       "scalaVersion": "3.8.3"
     }
   },
-  "version": 8
+  "version": 9
 }

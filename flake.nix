@@ -47,21 +47,21 @@
                 assets = {
                   "aarch64-darwin" = {
                     asset = "scala-cli-aarch64-apple-darwin.gz";
-                    sha256 = "1h2ghqp0jan7hxzqfnfyyvhyn9dpyjfak1cd73sm1k2qbhvcm1pg";
+                    sha256 = "15h6v107jzazhhpx0ljpxn8zbl1k8gr4csshcrcqd8f0crh19mmq";
                   };
                   "x86_64-linux" = {
                     asset = "scala-cli-x86_64-pc-linux.gz";
-                    sha256 = "03788lp7mycvm1p6ji7000vywhaw2f97xg8mxypj10gwy0n9hc8b";
+                    sha256 = "19bj9zqcv0krwmx3m5nr41vafhimf4ccmijlha7pv63yih2vj5sr";
                   };
                 };
                 asset = assets.${final.stdenv.hostPlatform.system}
                   or (throw "scala-cli fork release has no asset for ${final.stdenv.hostPlatform.system}");
                 src = final.fetchurl {
-                  url = "https://github.com/kubukoz/scala-cli/releases/download/fork-c043db1/${asset.asset}";
+                  url = "https://github.com/kubukoz/scala-cli/releases/download/fork-fee67bb/${asset.asset}";
                   inherit (asset) sha256;
                 };
               in (prev.scala-cli.override { jre = prev.jdk; }).overrideAttrs (old: {
-                version = "fork-c043db1";
+                version = "fork-fee67bb";
                 inherit src;
               });
             wrapCli = name: base: final.symlinkJoin {

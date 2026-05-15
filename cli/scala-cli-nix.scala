@@ -42,8 +42,6 @@ case class ArtifactEntry(url: String, sha256: String) derives Codec.AsObject
 
 case class NativeLockDeps(
     scalaNativeVersion: String,
-    compilerPlugins: List[ArtifactEntry],
-    runtimeDependencies: List[ArtifactEntry],
     toolingDependencies: List[ArtifactEntry]
 ) derives Codec.AsObject
 
@@ -102,6 +100,14 @@ case class ExportScope(
     sources: List[String],
     resourceDirs: List[String],
     dependencies: List[ExportDependency],
+    /** Deps scala-cli adds to this scope's Coursier resolution beyond what the
+      * user declared (JVM test-runner, Native runtime libs, Native
+      * test-interface, JS runtime libs, etc.). Populated by `export --json`
+      * since the upstream commit "Expose per-scope injected deps in export
+      * --json"; older scala-cli versions leave the field absent (decoded as
+      * Nil) and we fall back to the hand-rolled injection in `computeLock`.
+      */
+    injectedDependencies: List[ExportDependency],
     resolvers: List[String]
 )
 object ExportScope {
@@ -110,15 +116,14 @@ object ExportScope {
       sources <- c.get[List[String]]("sources")
       resourceDirs <- c.getOrElse[List[String]]("resourceDirs")(Nil)
       deps <- c.getOrElse[List[ExportDependency]]("dependencies")(Nil)
+      injected <- c.getOrElse[List[ExportDependency]]("injectedDependencies")(Nil)
       resolvers <- c.getOrElse[List[String]]("resolvers")(Nil)
-    } yield ExportScope(sources, resourceDirs, deps, resolvers)
+    } yield ExportScope(sources, resourceDirs, deps, injected, resolvers)
   }
 }
 
 case class NativeOptionsExport(
     scalaNativeVersion: String,
-    compilerPlugins: List[ExportDependency],
-    runtimeDependencies: List[ExportDependency],
     toolingDependencies: List[ExportDependency]
 ) derives Decoder
 
@@ -962,7 +967,7 @@ def computeLock(inputs: List[String])(using HashCache): IO[String] = {
         )
     )
     firstMainScope = firstExport.scopes
-      .getOrElse("main", ExportScope(Nil, Nil, Nil, Nil))
+      .getOrElse("main", ExportScope(Nil, Nil, Nil, Nil, Nil))
     sources = firstMainScope.sources.map(stripCwd(cwd))
     resourceDirs = firstMainScope.resourceDirs.map(stripCwd(cwd))
 
@@ -972,7 +977,7 @@ def computeLock(inputs: List[String])(using HashCache): IO[String] = {
     }
 
     lockFile = LockFile(
-      version = 8,
+      version = 9,
       sources = sources,
       resourceDirs = resourceDirs,
       targets = targetLocks.toMap
@@ -1037,7 +1042,7 @@ private def computeTargetLockContent(
   val scalaVersion = export_.scalaVersion
   val scalaMajor = scalaVersion.takeWhile(_ != '.')
   val mainScope =
-    export_.scopes.getOrElse("main", ExportScope(Nil, Nil, Nil, Nil))
+    export_.scopes.getOrElse("main", ExportScope(Nil, Nil, Nil, Nil, Nil))
   val testScope = export_.scopes.get("test")
   val deps = mainScope.dependencies.map { d =>
     s"${d.groupId}:${d.artifactId.fullName}:${d.version}"
@@ -1067,48 +1072,18 @@ private def computeTargetLockContent(
       def toDeps(eds: List[ExportDependency]): List[Dependency] =
         eds.map(d => Dependency.of(d.groupId, d.artifactId.fullName, d.version))
 
-      // For Native targets we must resolve scala-cli's injected runtime deps
-      // (scala3lib_native, javalib_native) together with user libs in a single
-      // Coursier resolution. Doing them separately produces a different set
-      // of winners for transitively-shared modules: scala-cli's combined
-      // resolution at build time picks whatever version a *direct* dep
-      // declares (e.g. portable-scala-reflect pinning scalalib_native0.5_2.13
-      // to 2.13.8+0.5.2), while a user-libs-only resolution can travel via an
-      // older scala3lib chain and land on a higher version. The lockfile then
-      // ends up with the wrong JAR and `scala-cli package --offline` fails.
-      val nativeRuntimeDeps: List[Dependency] =
-        export_.nativeOptions
-          .map(opts =>
-            toDeps(opts.compilerPlugins) ++ toDeps(opts.runtimeDependencies)
-          )
-          .getOrElse(Nil)
-
-      // scala-cli's `test` command sets `addTestRunnerDependency = true` on
-      // the *shared* options used by both the main and test build scopes. On
-      // Native that triggers a direct `test-interface_native:<snVersion>`
-      // dependency in *both* scopes' resolutions. We inject the same direct
-      // dep into the main scope here (mirroring its `nativeTestInterfaceDep`
-      // counterpart in the test scope below) so the main scope's offline
-      // resolution can find it. Without this, scala-cli's offline test build
-      // fails with "Error downloading test-interface_native:<snVersion>" when
-      // a test framework transitively pulls a higher version (e.g.
-      // munit 1.3.0 → test-interface 0.5.11 wins in the test scope, leaving
-      // 0.5.10 reachable only from the main scope's resolution).
-      val hasTests = testScope.exists(_.sources.nonEmpty)
-      val nativeTestInterfaceDep: Option[Dependency] =
-        export_.nativeOptions.map { opts =>
-          val snBinary =
-            opts.scalaNativeVersion.split('.').take(2).mkString(".")
-          val scalaBinary = scalaMajor match {
-            case "3" => "3"
-            case _   => scalaVersion.split('.').take(2).mkString(".")
-          }
-          Dependency.of(
-            "org.scala-native",
-            s"test-interface_native${snBinary}_${scalaBinary}",
-            opts.scalaNativeVersion
-          )
-        }
+      // scala-cli builds main and test as two separate `Build` scopes, each
+      // with its own Coursier resolution. Per scope, the effective direct-dep
+      // set is the user's deps plus scala-cli's own `injectedDependencies`
+      // (Native/JS runtime libs + nscplugin for both scopes; JVM test-runner /
+      // Native test-interface / JS test-bridge for Test only). Resolving each
+      // scope with its full direct-dep set keeps the lockfile's winners
+      // aligned with what `scala-cli package --offline` / `test --offline`
+      // expects — including cases where a test framework outranks a main-scope
+      // dep (e.g. munit 1.3.0 pulling javalib_native 0.5.11 while the main
+      // scope pins 0.5.10).
+      val mainInjected = toDeps(mainScope.injectedDependencies)
+      val testInjected = testScope.map(s => toDeps(s.injectedDependencies)).getOrElse(Nil)
 
       for {
         _ <- info(s"Scala version: ${C.bold}$scalaVersion${C.reset}")
@@ -1129,10 +1104,7 @@ private def computeTargetLockContent(
           val parts = dep.split(":")
           Dependency.of(parts(0), parts(1), parts(2))
         }
-        mainScopeTestInterfaceDep =
-          if (hasTests) nativeTestInterfaceDep.toList else Nil
-        allLibDeps =
-          (libraryArtifact +: userDeps) ++ nativeRuntimeDeps ++ mainScopeTestInterfaceDep
+        allLibDeps = (libraryArtifact +: userDeps) ++ mainInjected
         libArtifacts <- fetchArtifacts(allLibDeps*)
         _ <- info(
           s"Libraries: ${C.bold}${libArtifacts.size}${C.reset} artifacts (transitive)"
@@ -1149,25 +1121,17 @@ private def computeTargetLockContent(
             )
             toolingEntries <- collectEntries(toolingArtifacts)
           } yield NativeLockDeps(
-            opts.scalaNativeVersion,
-            // compilerPlugins + runtimeDependencies are merged into
-            // libraryDependencies above (combined resolution).
-            compilerPlugins = Nil,
-            runtimeDependencies = Nil,
+            scalaNativeVersion = opts.scalaNativeVersion,
             toolingDependencies = toolingEntries
           )
         }
 
-        // Test scope: scala-cli's test scope includes both main and test
-        // dependencies in a single combined resolution. We capture the full
-        // transitive set as the test classpath. The JVM test-runner is part of
-        // the test scope's `dependencies` (scala-cli's `export --json` injects
-        // it for the Test scope on JVM). For Native, `test-interface` is pulled
-        // in transitively by the test framework (e.g. munit-native). Native
-        // runtime deps are merged in for the same reason as the main scope.
-        // `nativeTestInterfaceDep` (computed above) is also added here as a
-        // direct dep so test-framework-transitive versions don't drop the
-        // scala-cli-pinned one from the test resolution.
+        // Test scope: scala-cli runs a separate Coursier resolution that
+        // combines user-declared test deps with scope-specific injections (JVM
+        // test-runner, Native test-interface, JS test-bridge, plus the
+        // platform runtime libs that also appear in the main scope). The
+        // injections come from `tScope.injectedDependencies` when scala-cli
+        // populates that field; otherwise `injectedFor` reconstructs them.
         testLock <- testScope
           .filter(s =>
             s.sources.nonEmpty || s.dependencies != mainScope.dependencies
@@ -1176,8 +1140,7 @@ private def computeTargetLockContent(
             val testDeps = tScope.dependencies.map(d =>
               Dependency.of(d.groupId, d.artifactId.fullName, d.version)
             )
-            val allTestDeps =
-              (libraryArtifact +: testDeps) ++ nativeRuntimeDeps ++ nativeTestInterfaceDep.toList
+            val allTestDeps = (libraryArtifact +: testDeps) ++ testInjected
             for {
               _ <- step("Fetching test dependencies...")
               testArtifacts <- fetchArtifacts(allTestDeps*)
@@ -1821,7 +1784,7 @@ def computeCoursierAppLock(
       }
     sorted = jarEntries.distinctBy(_.url).sortBy(_.url)
     lock = CoursierAppLock(
-      version = 8,
+      version = 9,
       kind = "coursier-app",
       mainClass = resolvedMainClass,
       javaOptions = javaOptions,

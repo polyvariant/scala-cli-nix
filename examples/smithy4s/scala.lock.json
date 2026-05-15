@@ -253,9 +253,8 @@
       "url": "https://repo1.maven.org/maven2/software/amazon/smithy/smithy-utils/1.69.0/smithy-utils-1.69.0.jar"
     }
   ],
-  "javaOptions": [
-  ],
+  "javaOptions": [],
   "kind": "coursier-app",
   "mainClass": "smithy4s.codegen.cli.Main",
-  "version": 8
+  "version": 9
 }

@@ -1,6 +1,5 @@
 {
-  "resourceDirs": [
-  ],
+  "resourceDirs": [],
   "sources": [
     "scala-cli-nix.scala"
   ],
@@ -3720,13 +3719,12 @@
             "url": "https://repo1.maven.org/maven2/xml-apis/xml-apis/1.4.01/xml-apis-1.4.01.pom"
           }
         ],
-        "resourceDirs": [
-        ],
+        "resourceDirs": [],
         "sources": [
           "scala-cli-nix.test.scala"
         ]
       }
     }
   },
-  "version": 8
+  "version": 9
 }

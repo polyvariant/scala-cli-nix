@@ -24,14 +24,14 @@ At Nix build time, `pkgs.fetchurl` fetches each lockfile URL directly. If the Ar
 
 For `lock-coords` (no scala-cli source files, so no `resolvers[]`), pass extra repos via repeatable `--repository <URL>` flags.
 
-#### Lockfile format (`scala.lock.json`, version 8)
+#### Lockfile format (`scala.lock.json`, version 9)
 
 The lockfile uses a multi-target format. Each target (a platform/Scala version combination) has its own section under the `targets` key.
 
 **Cross-platform example** (1 Scala version, 2 platforms):
 ```json
 {
-  "version": 8,
+  "version": 9,
   "sources": ["hello.scala"],
   "resourceDirs": ["resources"],
   "targets": {
@@ -50,8 +50,6 @@ The lockfile uses a multi-target format. Each target (a platform/Scala version c
       "libraryDependencies": [...],
       "native": {
         "scalaNativeVersion": "0.5.10",
-        "compilerPlugins": [],
-        "runtimeDependencies": [],
         "toolingDependencies": [...]
       }
     }
@@ -62,7 +60,7 @@ The lockfile uses a multi-target format. Each target (a platform/Scala version c
 **Single-target example** (standard JVM project):
 ```json
 {
-  "version": 8,
+  "version": 9,
   "sources": ["foo.scala"],
   "resourceDirs": [],
   "targets": {
@@ -88,7 +86,7 @@ The lockfile uses a multi-target format. Each target (a platform/Scala version c
   }
 }
 ```
-`test.libraryDependencies` is the full transitive resolution of main+test deps (matching scala-cli's `Scope.Test` resolution). For JVM tests, the `org.virtuslab.scala-cli:test-runner_<scalaBinary>` module appears directly in the test scope's `dependencies` returned by `scala-cli export --json` — the fork's `ScopedBuildInfo.forScope` injects it for the Test scope on JVM, with legacy version fallbacks for older Scala/Java already applied upstream. For Native tests, `test-interface` is pulled in transitively by the test framework (e.g. munit-native), but the framework's pinned version (e.g. `0.5.11`) can differ from scala-cli's bundled Scala Native runtime version (e.g. `0.5.10`). At test time `scala-cli test --offline` needs `test-interface` at scala-cli's bundled version, so the lock command also injects `org.scala-native:test-interface_native<snBinary>_<scalaBinary>:<scalaNativeVersion>` as a *direct* dep in **both** the main and test Coursier resolutions (mirroring how `addTestRunnerDependency = true` on the shared `BuildOptions` flows through to both scopes inside scala-cli). The injected version isn't guaranteed to win in the test scope (a transitive higher version can outrank it), but the main scope's resolution captures scala-cli's pinned version, so the offline cache carries both — see "Two scopes, two resolutions" below.
+`test.libraryDependencies` is the full transitive resolution of the test scope's effective direct deps (user-declared + scala-cli-injected). Both scope-level direct-dep sets come straight from the fork's `export --json`: each scope reports `dependencies` (user-declared) and `injectedDependencies` (scala-cli-supplied — JVM test-runner, Native test-interface, JS test-bridge, plus the platform runtime libs that also appear in the main scope). The lock command feeds `dependencies ++ injectedDependencies` to Coursier as the scope's direct-dep set, so the lockfile's winners match what `scala-cli test --offline` will look up at build time.
 
 ##### Two scopes, two resolutions
 
@@ -107,14 +105,14 @@ Target keys use only the dimensions that vary:
 
 ##### Field reference
 
-- `version` — schema version (8). Checked at build time; mismatch causes a build error directing the user to re-lock.
+- `version` — schema version (9). Checked at build time; mismatch causes a build error directing the user to re-lock.
 - `sources` — top-level, shared across targets. Lists source files relative to the project root.
 - `resourceDirs` — top-level, shared across targets. Resource directories declared via `//> using resourceDir` (or equivalent CLI options), as paths relative to the project root. The build pulls each directory into the filtered source tree as a whole subtree so `scala-cli package` embeds its contents into the JAR (JVM) or the linked binary (Native).
 - `targets.<key>.exportHash` — SHA-1 hex digest of the canonicalized (sorted keys, no spaces) `scala-cli export --json` output for this target, followed by a newline. Used for per-target staleness detection.
 - `targets.<key>.platform` — `"JVM"` or `"Native"`. Determines the build strategy.
 - `targets.<key>.compiler` / `libraryDependencies` — JARs, their POMs, and parent POMs. Parent POMs are needed because Coursier resolves version inheritance from parent POMs during offline resolution. The lock command walks each resolved POM's declared deps and materializes their POMs too (so scala-cli's offline resolver can see the full dep graph), but it does **not** materialize a JAR for any `(group, artifact)` already covered by the main resolution winner — an extra JAR at a different version on the runtime classpath would shadow the winner's classes (NoSuchMethodError at runtime).
-- `targets.<key>.native` — present for Scala Native targets. Only `toolingDependencies` (the linker, scala-native-cli, etc.) is populated; `compilerPlugins` and `runtimeDependencies` are kept empty. Tooling is resolved on its own because it targets Scala 2.12 while everything else uses the project's Scala version. Scala Native's own runtime deps (`nscplugin`, `scala3lib_native`, `javalib_native`) are folded into `libraryDependencies` and resolved jointly with the user's deps — see the next bullet.
-- **Combined resolution for Native targets.** scala-cli, at build time, resolves user deps and its injected native runtime deps together in one Coursier pass. The lock command must do the same: if user libs are resolved separately, a different version can "win" for a transitively-shared module than the version scala-cli picks at build time, and `scala-cli package --offline` fails to find the JAR for its winner. Concretely: `portable-scala-reflect_native0.5_2.13:1.1.3` (transitively pulled by e.g. `scala-java-time`) declares `scalalib_native0.5_2.13:2.13.8+0.5.2` directly. In a user-libs-only resolution, an older transitive `scala3lib_native` pulls a higher `scalalib_native0.5_2.13` and wins. With scala-cli's latest `scala3lib_native` added as a direct dep, it excludes `scalalib_native0.5_2.13` from its chain — the only remaining path is portable-scala-reflect's pinned 2.13.8+0.5.2, which becomes the winner. The lock-time CLI mirrors scala-cli's combined resolution to keep winners consistent. Regression test: `examples/scala3-native-evicted-2.13`.
+- `targets.<key>.native` — present for Scala Native targets. Carries `scalaNativeVersion` and `toolingDependencies` (the linker, scala-native-cli, etc.). Tooling is resolved on its own because it targets Scala 2.12 while everything else uses the project's Scala version. Scala Native's own runtime deps (`nscplugin`, `scala3lib_native`, `javalib_native`) come from the export's per-scope `injectedDependencies` and are folded into `libraryDependencies` and `test.libraryDependencies` via the combined resolution — see the next bullet.
+- **Combined resolution for Native targets.** scala-cli, at build time, resolves user deps and its injected native runtime deps together in one Coursier pass. The lock command must do the same: if user libs are resolved separately, a different version can "win" for a transitively-shared module than the version scala-cli picks at build time, and `scala-cli package --offline` fails to find the JAR for its winner. Concretely: `portable-scala-reflect_native0.5_2.13:1.1.3` (transitively pulled by e.g. `scala-java-time`) declares `scalalib_native0.5_2.13:2.13.8+0.5.2` directly. In a user-libs-only resolution, an older transitive `scala3lib_native` pulls a higher `scalalib_native0.5_2.13` and wins. With scala-cli's latest `scala3lib_native` added as a direct dep, it excludes `scalalib_native0.5_2.13` from its chain — the only remaining path is portable-scala-reflect's pinned 2.13.8+0.5.2, which becomes the winner. The lock-time CLI mirrors this by handing the fork's `injectedDependencies` (which include `scala3lib_native`/`javalib_native`/`nscplugin`) to Coursier alongside the user's deps. Regression test: `examples/scala3-native-evicted-2.13`.
 - `targets.<key>.test` — optional. Present when the project has test sources or test-only deps. Contains `sources` (test source files), `resourceDirs` (test-scope resource directories, merged with the top-level `resourceDirs` when running tests), and `libraryDependencies` (full main+test classpath; reuses the target's `compiler` and `native` blocks).
 
 #### Coursier cache path structure
@@ -185,7 +183,7 @@ When `nativeImage = true` is passed to `buildScalaCliApp(s)`, a JVM target is bu
 
 For Scala Native (`platform: "Native"`), the build is simpler but the dependency set is larger:
 
-1. **Deps cache**: Compiler and library JARs/POMs are symlinked into the Coursier cache, along with native tooling (linker, scala-native-cli). In newly generated lockfiles, Scala Native's own runtime artifacts (`nscplugin`, `scala3lib_native`, `javalib_native`) live in `libraryDependencies` — see "Combined resolution for Native targets" in the lockfile reference above. `lib.nix` still folds in `native.compilerPlugins` and `native.runtimeDependencies` so older lockfiles keep building. The `+` character in artifact versions (e.g., `3.6.4+0.5.10`) is percent-encoded to `%2B` to match Coursier's cache layout.
+1. **Deps cache**: Compiler and library JARs/POMs are symlinked into the Coursier cache, along with native tooling (linker, scala-native-cli). Scala Native's own runtime artifacts (`nscplugin`, `scala3lib_native`, `javalib_native`) live in `libraryDependencies` — see "Combined resolution for Native targets" in the lockfile reference above. The `+` character in artifact versions (e.g., `3.6.4+0.5.10`) is percent-encoded to `%2B` to match Coursier's cache layout.
 2. **Compilation + linking**: `scala-cli --power package <sources> --server=false --offline --platform scala-native --scala-version <v>` compiles and links everything into a single native executable. No `--library` flag — the entire app is linked into one binary.
 3. **No wrapper**: The output is a native binary, copied directly to `$out/bin`. No JVM or classpath needed at runtime.
 4. **Extra build inputs**: `clang` and `which` are needed for the native linking step.
@@ -257,7 +255,7 @@ The resulting lockfile uses a discriminated shape — `kind = "coursier-app"` at
 
 ```json
 {
-  "version": 8,
+  "version": 9,
   "kind": "coursier-app",
   "mainClass": "scala.meta.metals.Main",
   "javaOptions": [],

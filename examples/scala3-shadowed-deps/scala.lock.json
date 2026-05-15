@@ -376,7 +376,7 @@
           "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.12/3.2.19/scalatest_2.12-3.2.19.pom"
         }
       ],
-      "exportHash": "8ce8f3f42d485e015fd5ddce0bb9158ed93d02ed",
+      "exportHash": "ec93bd03a21aa5cbd30c947db66f4295984a0342",
       "libraryDependencies": [
         {
           "sha256": "Ct3sZw/tzT8RPFyAkdeDKA0j9146y4QbYanNsHk3agg=",
@@ -1367,5 +1367,5 @@
       "scalaVersion": "3.8.3"
     }
   },
-  "version": 8
+  "version": 9
 }

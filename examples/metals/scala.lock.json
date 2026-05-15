@@ -637,9 +637,8 @@
       "url": "https://repo1.maven.org/maven2/org/wildfly/common/wildfly-common/1.6.0.Final/wildfly-common-1.6.0.Final.jar"
     }
   ],
-  "javaOptions": [
-  ],
+  "javaOptions": [],
   "kind": "coursier-app",
   "mainClass": "scala.meta.metals.Main",
-  "version": 8
+  "version": 9
 }

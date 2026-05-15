@@ -1,6 +1,6 @@
 { scala-cli, openjdk, makeWrapper, runCommand, stdenv, lib, clang, which, graalvmPackages, fetchurl, bash }:
 let
-  supportedVersion = 8;
+  supportedVersion = 9;
 
   # Each fetchurl produces its own FOD — per-artifact granularity, and Nix
   # realizes them in parallel (unlike builtins.fetchurl, which would block the
@@ -36,9 +36,8 @@ let
           inherit (target) platform scalaVersion;
           compiler = fetchAll target.compiler;
           libraryDependencies = fetchAll target.libraryDependencies;
-          nativeCompilerPlugins = if n != null then fetchAll n.compilerPlugins else [];
-          nativeRuntimeDependencies = if n != null then fetchAll n.runtimeDependencies else [];
           nativeToolingDependencies = if n != null then fetchAll n.toolingDependencies else [];
+          scalaNativeVersion = if n != null then n.scalaNativeVersion else null;
           test =
             if t != null
             then {
@@ -101,6 +100,18 @@ let
   platformFlag = platform:
     if platform == "Native" then "scala-native" else "jvm";
 
+  # `--platform <p>` plus, for Native targets, `--native-version <v>` so
+  # `scala-cli package`/`test` uses the Scala Native version recorded in the
+  # lockfile rather than whatever default the in-sandbox scala-cli ships with.
+  # Without this, builds break whenever the locking and building scala-cli
+  # versions disagree on the bundled Scala Native (e.g. fork on 0.5.11 vs
+  # nixpkgs on 0.5.10).
+  platformArgs = fetched:
+    "--platform ${platformFlag fetched.platform}" +
+    (if fetched.scalaNativeVersion != null
+     then " --native-version ${fetched.scalaNativeVersion}"
+     else "");
+
   # Common scala-cli sandbox env setup, shared by JVM/Native build and test phases
   scalaCliEnvSetup = ''
     export HOME=$TMPDIR/home
@@ -128,7 +139,7 @@ let
       COURSIER_CACHE = depsCache;
       buildPhase = scalaCliEnvSetup + ''
         scala-cli --power test ${sourceArgs} --server=false --offline \
-          --platform ${platformFlag fetched.platform} \
+          ${platformArgs fetched} \
           --scala-version ${fetched.scalaVersion}
       '';
       installPhase = ''
@@ -148,7 +159,7 @@ let
       # while the main scope's scala3lib_native pins 0.5.10), the two scopes
       # disagree and each needs its own winners in cache.
       allDeps = fetched.compiler ++ fetched.libraryDependencies ++ fetched.test.libraryDependencies
-        ++ fetched.nativeCompilerPlugins ++ fetched.nativeRuntimeDependencies ++ fetched.nativeToolingDependencies;
+        ++ fetched.nativeToolingDependencies;
       depsCache = mkCacheDir "scala-cli-test-deps-${pname}" allDeps;
     in stdenv.mkDerivation (attrOverrides ({
       pname = "${pname}-test";
@@ -158,7 +169,7 @@ let
       COURSIER_CACHE = depsCache;
       buildPhase = scalaCliEnvSetup + ''
         scala-cli --power test ${sourceArgs} --server=false --offline \
-          --platform ${platformFlag fetched.platform} \
+          ${platformArgs fetched} \
           --scala-version ${fetched.scalaVersion}
       '';
       installPhase = ''
@@ -194,12 +205,12 @@ let
 
         buildPhase = scalaCliEnvSetup + ''
           scala-cli --power package ${sourceArgs} --server=false --offline --library \
-            --platform ${platformFlag fetched.platform} \
+            ${platformArgs fetched} \
             --scala-version ${fetched.scalaVersion} \
             -o $out/share/${pname}.jar
         '' + lib.optionalString (mainClass == null) ''
           MAIN_CLASSES=$(scala-cli --power run --main-class-list ${sourceArgs} --server=false --offline \
-            --platform ${platformFlag fetched.platform} \
+            ${platformArgs fetched} \
             --scala-version ${fetched.scalaVersion})
           MAIN_CLASS_COUNT=$(echo "$MAIN_CLASSES" | wc -l)
           if [ "$MAIN_CLASS_COUNT" -ne 1 ]; then
@@ -253,7 +264,7 @@ let
       buildPhase = scalaCliEnvSetup + ''
         mkdir -p $out/share
         scala-cli --power package ${sourceArgs} --server=false --offline --assembly \
-          --platform ${platformFlag fetched.platform} \
+          ${platformArgs fetched} \
           --scala-version ${fetched.scalaVersion} \
           ${lib.optionalString (mainClass != null) "--main-class ${mainClass}"} \
           -o $out/share/${pname}.jar
@@ -297,7 +308,7 @@ let
     let
       inherit (prepareSources sources resourceDirs src) sourceArgs;
       allDeps = fetched.compiler ++ fetched.libraryDependencies
-        ++ fetched.nativeCompilerPlugins ++ fetched.nativeRuntimeDependencies ++ fetched.nativeToolingDependencies;
+        ++ fetched.nativeToolingDependencies;
       depsCache = mkCacheDir "scala-cli-deps-${pname}" allDeps;
 
       tests = mkTests { inherit pname version src sources resourceDirs fetched attrOverrides; };
@@ -313,7 +324,7 @@ let
       buildPhase = scalaCliEnvSetup + ''
         mkdir -p $out/bin
         scala-cli --power package ${sourceArgs} --server=false --offline \
-          --platform ${platformFlag fetched.platform} \
+          ${platformArgs fetched} \
           --scala-version ${fetched.scalaVersion} \
           -o $out/bin/${pname}
       '';
