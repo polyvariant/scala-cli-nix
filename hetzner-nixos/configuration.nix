@@ -1,20 +1,24 @@
-{ modulesPath, lib, pkgs, ... }: {
+{
+  modulesPath,
+  lib,
+  pkgs,
+  ...
+}:
+{
   imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
 
+  # Hetzner cloud cx-series boots in BIOS mode (not UEFI). Disko needs a
+  # 1MiB bios_grub partition for GRUB's stage 1.5 to live in on a GPT disk,
+  # and the bootloader has to be GRUB targeting the whole disk.
   disko.devices.disk.main = {
     type = "disk";
     device = "/dev/sda";
     content = {
       type = "gpt";
       partitions = {
-        ESP = {
-          size = "512M";
-          type = "EF00";
-          content = {
-            type = "filesystem";
-            format = "vfat";
-            mountpoint = "/boot";
-          };
+        boot = {
+          size = "1M";
+          type = "EF02"; # BIOS boot partition
         };
         root = {
           size = "100%";
@@ -28,8 +32,11 @@
     };
   };
 
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
+  # `device` is provided by disko's GRUB integration based on disk.main.
+  boot.loader.grub = {
+    enable = true;
+    efiSupport = false;
+  };
 
   networking.hostName = "server01";
   networking.useDHCP = lib.mkDefault true;
@@ -39,10 +46,15 @@
   services.openssh.settings.PermitRootLogin = "prohibit-password";
 
   users.users.root.openssh.authorizedKeys.keys = [
-    "ssh-ed25519 AAAA... your-key-here"
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJbf71nFwkbLYlyceqJe35I4rHVc/8apmenfSQPVVzxF kubukoz@kubukoz-max.local"
+    # nix-ci deploy key (see nix-ci.nix deploy.server01).
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKtOMFEJkH37S3sHD3WS9XScOyx1b2noFgQ4edrxOcxE nix-ci@scala-cli-nix"
   ];
 
-  environment.systemPackages = with pkgs; [ git vim ];
+  environment.systemPackages = with pkgs; [
+    git
+    vim
+  ];
 
   system.stateVersion = "24.11";
 }

@@ -96,6 +96,32 @@
         in {
           default = pkgs.scala-cli-nix-cli;
           inherit (pkgs) scala-cli-nix-cli-native-image;
+        } // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          # Deploy wrapper consumed by nix-ci (see nix-ci.nix). x86_64-linux
+          # only because nix-ci's runners are linux/amd64 and that's where
+          # the toplevel closure for server01 builds natively.
+          deploy-server01 = pkgs.callPackage ./hetzner-nixos/deploy.nix {
+            targetHost = "178.105.118.88";
+            hostKey = "178.105.118.88 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII/gUJ/hYY4swoEvQTxw7OAGpj3SQxTm9kg7gk7xOgax";
+          };
+        }
+      );
+
+      devShells = forAllSystems (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in {
+          # Used by hetzner-nixos/.envrc. `withPlugins` bakes the hcloud
+          # provider into the tofu wrapper so `tofu init` does not need to
+          # fetch it from the registry.
+          default = pkgs.mkShellNoCC {
+            packages = [
+              # `external` and `null` are pulled in by the nixos-anywhere
+              # all-in-one module.
+              (pkgs.opentofu.withPlugins (p: [ p.hcloud p.external p.null ]))
+              pkgs.nixos-anywhere
+            ];
+          };
         }
       );
 
