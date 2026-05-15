@@ -322,6 +322,29 @@ nix flake check --print-build-logs
 
 This builds all example apps (Scala 2, Scala 3, Scala Native, Native+CE, the cross JVM/Native example, and on Linux the docker images via a NixOS VM test) and verifies their output.
 
+### CI cache (nix-ci.com + nixbuild.net → `scala-cli-nix.cachix.org`)
+
+CI builds run on [nix-ci.com](https://nix-ci.com), which dispatches the heavy work to [nixbuild.net](https://nixbuild.net). Both share the `scala-cli-nix` Cachix cache:
+
+- nix-ci pushes every successful flake build to `scala-cli-nix.cachix.org`.
+- nixbuild.net pulls from the same cache as a substituter, so unchanged derivations aren't rebuilt across runs.
+- Local `nix build` / `nix flake check` (and downstream repos in `known-users`) hits the cache directly.
+
+#### Per-repo: `nix-ci.nix`
+
+The `cachix` block in `nix-ci.nix` at the repo root tells nix-ci which cache to push to and which public key to trust on pull. The `public-key` placeholder must be replaced with the real one — copy it from the cache page on `app.cachix.org/cache/scala-cli-nix` (Settings → Public signing key).
+
+A `CACHIX_AUTH_TOKEN` (or `CACHIX_SIGNING_KEY`) secret must be set on the repo in the nix-ci dashboard for pushes to succeed.
+
+#### Account-side: nixbuild.net
+
+For nixbuild.net to *substitute from* the cache (avoid rebuilds across runs), set this once on the nixbuild.net account settings:
+
+- `substituters`: append `https://scala-cli-nix.cachix.org`
+- `trusted-public-keys`: append the same `scala-cli-nix.cachix.org-1:...` key used in `nix-ci.nix`
+
+This is account-level, not per-repo — every repo built through nixbuild.net under this account benefits.
+
 ### CLI tool
 
 The CLI tool (`cli/scala-cli-nix.scala`) is written in Scala 3 and built by `buildScalaCliApp`. It uses `coursierapi` for dependency resolution, `fs2` for process execution and file I/O, and `circe` for JSON. To update the CLI's own lockfile after changing its dependencies, run:
