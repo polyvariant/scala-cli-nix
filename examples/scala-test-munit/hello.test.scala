@@ -1,4 +1,4 @@
-//> using test.dep org.scalameta::munit::1.3.0
+//> using test.dep org.scalameta::munit::1.2.4
 
 class MainSuite extends munit.FunSuite {
   test("greeting is correct") {

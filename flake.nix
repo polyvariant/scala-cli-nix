@@ -136,7 +136,7 @@
             packages = [
               # `external` and `null` are pulled in by the nixos-anywhere
               # all-in-one module.
-              (pkgs.opentofu.withPlugins (p: [ p.hcloud p.external p.null ]))
+              (pkgs.opentofu.withPlugins (p: [ p.hetznercloud_hcloud p.hashicorp_external p.hashicorp_null ]))
               pkgs.nixos-anywhere
               deploy-rs.packages.${system}.default
             ];

@@ -2,8 +2,7 @@
   "resourceDirs": [
   ],
   "sources": [
-    "src/main.scala",
-    "unrelated.scala"
+    "src/main.scala"
   ],
   "targets": {
     "jvm": {
@@ -377,7 +376,7 @@
           "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.12/3.2.19/scalatest_2.12-3.2.19.pom"
         }
       ],
-      "exportHash": "599497cb4171803fd2fb33739c3d6ae884de60d3",
+      "exportHash": "d0012a048634d73cbfa0e971ca76ea325ebb9100",
       "libraryDependencies": [
         {
           "sha256": "i1FkxL4teoZjWWa0GaCLOT5Ys8e8DK+1AuDzQkhyK04=",
