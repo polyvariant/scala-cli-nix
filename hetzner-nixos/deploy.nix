@@ -5,7 +5,7 @@
 # nix-ci sets DEPLOY_SSH_KEY to a path holding the private key
 # (see ssh-keys config in nix-ci.nix). Locally you can run it the same way:
 #
-#   DEPLOY_SSH_KEY=$PWD/hetzner-nixos/.secrets/nix-ci-deploy \
+#   DEPLOY_SSH_KEY=$PWD/.secrets/nix-ci-deploy \
 #     nix run .#deploy-server01
 writeShellApplication {
   name = "deploy-server01";

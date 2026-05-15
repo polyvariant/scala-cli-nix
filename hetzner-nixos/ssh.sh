@@ -8,6 +8,7 @@
 set -euo pipefail
 
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+root=$(cd -- "$here/.." && pwd)
 
 ip=$(tofu -chdir="$here" output -raw ipv4 2>/dev/null || true)
 if [[ -z "$ip" ]]; then
@@ -19,7 +20,7 @@ if [[ -z "$ip" || "$ip" == "null" ]]; then
 fi
 
 exec ssh \
-  -i "$here/.secrets/nix-ci-deploy" \
+  -i "$root/.secrets/nix-ci-deploy" \
   -o IdentitiesOnly=yes \
   "root@$ip" \
   "$@"

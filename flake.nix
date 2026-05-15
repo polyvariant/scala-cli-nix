@@ -112,7 +112,7 @@
         let
           pkgs = import nixpkgs { inherit system; };
         in {
-          # Used by hetzner-nixos/.envrc. `withPlugins` bakes the hcloud
+          # Used by the top-level .envrc. `withPlugins` bakes the hcloud
           # provider into the tofu wrapper so `tofu init` does not need to
           # fetch it from the registry.
           default = pkgs.mkShellNoCC {
