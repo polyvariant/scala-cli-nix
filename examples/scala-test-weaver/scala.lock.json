@@ -1897,6 +1897,14 @@
           "url": "https://repo1.maven.org/maven2/org/scala-native/javalib_native0.4_3/0.4.17/javalib_native0.4_3-0.4.17.pom"
         },
         {
+          "sha256": "3MMUnDVPKHX3RqmmdB1VM03KK33BQZKfAJaArtcX1Os=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/junit-runtime_native0.4_3/0.4.17/junit-runtime_native0.4_3-0.4.17.jar"
+        },
+        {
+          "sha256": "n7NRpzKD9QBu+phcVRAKbU4Etki1GvZFMsDuTfEUIyo=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/junit-runtime_native0.4_3/0.4.17/junit-runtime_native0.4_3-0.4.17.pom"
+        },
+        {
           "sha256": "ukODOhn51becGHo5Vu6y/9cb+auxG2k+v3g0t1O6ouM=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/nativelib_native0.4_2.13/0.4.17/nativelib_native0.4_2.13-0.4.17.jar"
         },
@@ -1951,6 +1959,22 @@
         {
           "sha256": "lbdOD9uRexNTOUzA5BXehpKpZf8oocfbQnPljMBvBCQ=",
           "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.4_2.13/0.4.17/scalalib_native0.4_2.13-0.4.17.pom"
+        },
+        {
+          "sha256": "aZ136o00eOXrDWn0NaHLAJxm50X0pL76sAv7IO0og/8=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.4_3/0.4.17/test-interface-sbt-defs_native0.4_3-0.4.17.jar"
+        },
+        {
+          "sha256": "L8c0Mfo7vs8fHRxPjSluylUri0VJGJFojFr/j8REmcE=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.4_3/0.4.17/test-interface-sbt-defs_native0.4_3-0.4.17.pom"
+        },
+        {
+          "sha256": "MGRVGlqs3GyGSfQDFURPEe8ruhyNDA7KG1Be9B7T3u0=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.4_3/0.4.17/test-interface_native0.4_3-0.4.17.jar"
+        },
+        {
+          "sha256": "l/IiOpbL2V55eL4/OlCYKSAoPlXKQMp5Pu2nhoCcGvs=",
+          "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.4_3/0.4.17/test-interface_native0.4_3-0.4.17.pom"
         },
         {
           "sha256": "dq2URtSLs/yOnLG2T+pGIrfiy9jpxwoUeRsosawOdfE=",

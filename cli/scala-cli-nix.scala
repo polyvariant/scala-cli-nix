@@ -1083,6 +1083,33 @@ private def computeTargetLockContent(
           )
           .getOrElse(Nil)
 
+      // scala-cli's `test` command sets `addTestRunnerDependency = true` on
+      // the *shared* options used by both the main and test build scopes. On
+      // Native that triggers a direct `test-interface_native:<snVersion>`
+      // dependency in *both* scopes' resolutions. We inject the same direct
+      // dep into the main scope here (mirroring its `nativeTestInterfaceDep`
+      // counterpart in the test scope below) so the main scope's offline
+      // resolution can find it. Without this, scala-cli's offline test build
+      // fails with "Error downloading test-interface_native:<snVersion>" when
+      // a test framework transitively pulls a higher version (e.g.
+      // munit 1.3.0 → test-interface 0.5.11 wins in the test scope, leaving
+      // 0.5.10 reachable only from the main scope's resolution).
+      val hasTests = testScope.exists(_.sources.nonEmpty)
+      val nativeTestInterfaceDep: Option[Dependency] =
+        export_.nativeOptions.map { opts =>
+          val snBinary =
+            opts.scalaNativeVersion.split('.').take(2).mkString(".")
+          val scalaBinary = scalaMajor match {
+            case "3" => "3"
+            case _   => scalaVersion.split('.').take(2).mkString(".")
+          }
+          Dependency.of(
+            "org.scala-native",
+            s"test-interface_native${snBinary}_${scalaBinary}",
+            opts.scalaNativeVersion
+          )
+        }
+
       for {
         _ <- info(s"Scala version: ${C.bold}$scalaVersion${C.reset}")
         _ <- info(s"Platform: ${C.bold}${target.platformLock}${C.reset}")
@@ -1102,7 +1129,10 @@ private def computeTargetLockContent(
           val parts = dep.split(":")
           Dependency.of(parts(0), parts(1), parts(2))
         }
-        allLibDeps = (libraryArtifact +: userDeps) ++ nativeRuntimeDeps
+        mainScopeTestInterfaceDep =
+          if (hasTests) nativeTestInterfaceDep.toList else Nil
+        allLibDeps =
+          (libraryArtifact +: userDeps) ++ nativeRuntimeDeps ++ mainScopeTestInterfaceDep
         libArtifacts <- fetchArtifacts(allLibDeps*)
         _ <- info(
           s"Libraries: ${C.bold}${libArtifacts.size}${C.reset} artifacts (transitive)"
@@ -1135,29 +1165,9 @@ private def computeTargetLockContent(
         // it for the Test scope on JVM). For Native, `test-interface` is pulled
         // in transitively by the test framework (e.g. munit-native). Native
         // runtime deps are merged in for the same reason as the main scope.
-        //
-        // We also inject `test-interface_native<snBinary>_<scalaBinary>` at
-        // scala-cli's bundled Scala Native version as a *direct* dep. At test
-        // time scala-cli's offline runner needs that exact version on the
-        // classpath, but test frameworks only pull in the version they were
-        // built against (e.g. munit 1.1.0 → test-interface 0.5.6 while
-        // scala-cli ships 0.5.10). Without this direct pin Coursier picks the
-        // framework's older version as the winner and `scala-cli test --offline`
-        // can't find scala-cli's wanted version in the cache.
-        nativeTestInterfaceDep: Option[Dependency] = export_.nativeOptions.map {
-          opts =>
-            val snBinary =
-              opts.scalaNativeVersion.split('.').take(2).mkString(".")
-            val scalaBinary = scalaMajor match {
-              case "3" => "3"
-              case _   => scalaVersion.split('.').take(2).mkString(".")
-            }
-            Dependency.of(
-              "org.scala-native",
-              s"test-interface_native${snBinary}_${scalaBinary}",
-              opts.scalaNativeVersion
-            )
-        }
+        // `nativeTestInterfaceDep` (computed above) is also added here as a
+        // direct dep so test-framework-transitive versions don't drop the
+        // scala-cli-pinned one from the test resolution.
         testLock <- testScope
           .filter(s =>
             s.sources.nonEmpty || s.dependencies != mainScope.dependencies

@@ -114,9 +114,11 @@ let
       mainAndTestSources = sources ++ fetched.test.sources;
       mainAndTestResourceDirs = resourceDirs ++ fetched.test.resourceDirs;
       inherit (prepareSources mainAndTestSources mainAndTestResourceDirs src) sourceArgs;
-      # Test classpath was resolved combining main + test deps in a single
-      # Coursier resolution; it is sufficient on its own.
-      allDeps = fetched.compiler ++ fetched.test.libraryDependencies;
+      # scala-cli runs separate Coursier resolutions for the main and test
+      # scopes; if the test framework pulls a transitive version that wins over
+      # what the main scope picks, the two resolutions disagree and each scope
+      # needs its own winners in cache.
+      allDeps = fetched.compiler ++ fetched.libraryDependencies ++ fetched.test.libraryDependencies;
       depsCache = mkCacheDir "scala-cli-test-deps-${pname}" allDeps;
     in stdenv.mkDerivation (attrOverrides ({
       pname = "${pname}-test";
@@ -140,7 +142,12 @@ let
       mainAndTestSources = sources ++ fetched.test.sources;
       mainAndTestResourceDirs = resourceDirs ++ fetched.test.resourceDirs;
       inherit (prepareSources mainAndTestSources mainAndTestResourceDirs src) sourceArgs;
-      allDeps = fetched.compiler ++ fetched.test.libraryDependencies
+      # scala-cli runs separate Coursier resolutions for the main and test
+      # scopes; if the test framework pulls a transitive version that wins over
+      # what the main scope picks (e.g. munit 1.3.0 → javalib_native 0.5.11
+      # while the main scope's scala3lib_native pins 0.5.10), the two scopes
+      # disagree and each needs its own winners in cache.
+      allDeps = fetched.compiler ++ fetched.libraryDependencies ++ fetched.test.libraryDependencies
         ++ fetched.nativeCompilerPlugins ++ fetched.nativeRuntimeDependencies ++ fetched.nativeToolingDependencies;
       depsCache = mkCacheDir "scala-cli-test-deps-${pname}" allDeps;
     in stdenv.mkDerivation (attrOverrides ({
