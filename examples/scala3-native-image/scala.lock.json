@@ -156,24 +156,12 @@
           "url": "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-xml_2.13/1.3.0/scala-xml_2.13-1.3.0.pom"
         },
         {
-          "sha256": "fu/efjzBk3943BO55sAHRvYCz/b1Yh1i3ywk2SJhn+A=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.12.17/scala-library-2.12.17.jar"
-        },
-        {
           "sha256": "De3jT9g+Bf4V0iYADSCdVySbudKAsAyHNeeD/M7s27U=",
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.12.17/scala-library-2.12.17.pom"
         },
         {
-          "sha256": "TYqPmEzOMaMpok8QsL8zbwQstirrQ1KQobICQxVM/Ms=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.12.20/scala-library-2.12.20.jar"
-        },
-        {
           "sha256": "lMMVtMUaTI0KM/F34WDdrWO2hZX+s5l/oleRxaFKA8k=",
           "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.12.20/scala-library-2.12.20.pom"
-        },
-        {
-          "sha256": "yw6xozpgVrLmUvJpI7+jYTSK5yohGdp7eNwfZz0ak7E=",
-          "url": "https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.3/scala-library-2.13.3.jar"
         },
         {
           "sha256": "f9R0w0M8U885E1IV00Z+ZqZuo/r5+r5hgzDpuuiykmw=",

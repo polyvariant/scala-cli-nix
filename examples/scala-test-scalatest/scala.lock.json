@@ -428,7 +428,7 @@
           "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.12/3.2.19/scalatest_2.12-3.2.19.pom"
         }
       ],
-      "exportHash": "6b03791e94631fe92a59e802f75f6f70ef99bbf8",
+      "exportHash": "a2d9d924b142f9e81e7518dfc462dadc37c3aba5",
       "libraryDependencies": [
         {
           "sha256": "l4RavkKm7B1yNEapz+A1VlRCYZyvugN0EXpUltNlHok=",
@@ -1212,124 +1212,124 @@
             "url": "https://repo1.maven.org/maven2/org/scala-sbt/test-interface/1.0/test-interface-1.0.pom"
           },
           {
-            "sha256": "Ju9xptCZMwHSjZaTutoY/4GzczNrcDaPz/Ae1OtLlY4=",
-            "url": "https://repo1.maven.org/maven2/org/scalactic/scalactic_3/3.2.19/scalactic_3-3.2.19.jar"
+            "sha256": "/viGFOMJP/THFoGcbk2L/S1emsVY8x03AAUcAzmP5Fk=",
+            "url": "https://repo1.maven.org/maven2/org/scalactic/scalactic_3/3.2.20/scalactic_3-3.2.20.jar"
           },
           {
-            "sha256": "ry57/w4OffuxdbnxCZFzB9TN6cVr7SOJPPvmozZ4ACQ=",
-            "url": "https://repo1.maven.org/maven2/org/scalactic/scalactic_3/3.2.19/scalactic_3-3.2.19.pom"
+            "sha256": "UdXQFB5NEplXkfcgLa3LdlUPlcTiLihtpkO9f0gGB/A=",
+            "url": "https://repo1.maven.org/maven2/org/scalactic/scalactic_3/3.2.20/scalactic_3-3.2.20.pom"
           },
           {
-            "sha256": "Xca4+lOW/p4afCty3xdKjrPpJ3DNw+cGNtPrpnPNDaM=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-compatible/3.2.19/scalatest-compatible-3.2.19.jar"
+            "sha256": "qVvb8p55PWZ/dRXjAvrFcfmaiZEnuFIBJfVSsJcSdV0=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-compatible/3.2.20/scalatest-compatible-3.2.20.jar"
           },
           {
-            "sha256": "5/MJkiy20HK9YJhnTnLpSMJzjArHRwpj4gvRVhTao8A=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-compatible/3.2.19/scalatest-compatible-3.2.19.pom"
+            "sha256": "Z0ZdWwdYYh6g893Pjb0w8O4wQ8XMIJMcQyeOmp8dCHo=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-compatible/3.2.20/scalatest-compatible-3.2.20.pom"
           },
           {
-            "sha256": "9uPTjCA0qcq3MT9kTYqTO/G1JB/zUALMdpFqQnqCYiM=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-core_3/3.2.19/scalatest-core_3-3.2.19.jar"
+            "sha256": "ErD4pYV8x1NgE+wmFVT5nT9QIr1FFB4SuJqElFIV70w=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-core_3/3.2.20/scalatest-core_3-3.2.20.jar"
           },
           {
-            "sha256": "BpZVptuWaiVWkMXZBI1OeZwXAmBV1g12hp4BA9qcH9s=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-core_3/3.2.19/scalatest-core_3-3.2.19.pom"
+            "sha256": "dfa9tSZwXWjjwwzgqu8scxLk2LPIgvU67uuHxUavjZw=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-core_3/3.2.20/scalatest-core_3-3.2.20.pom"
           },
           {
-            "sha256": "g1rPjsLLDTm+sQUu4hOQKf2sKNFy/IZ9uJ/0nWQLJV4=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-diagrams_3/3.2.19/scalatest-diagrams_3-3.2.19.jar"
+            "sha256": "1GBQQ8MhhbW8fkSs+Ez2jaC1TSwb76kEGQgWfcLiDBc=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-diagrams_3/3.2.20/scalatest-diagrams_3-3.2.20.jar"
           },
           {
-            "sha256": "y8VyS4YHy8nThSxb3pwJydKehqw6XDlr8RLHV83wSPI=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-diagrams_3/3.2.19/scalatest-diagrams_3-3.2.19.pom"
+            "sha256": "2/wIeci46o3TdLhwx1p63E+YTR7BM92Fhe7Uhs0oeI4=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-diagrams_3/3.2.20/scalatest-diagrams_3-3.2.20.pom"
           },
           {
-            "sha256": "PUne7t4s0BV44DcGWGLXc0r9OmMww13DxJBvU/VzAts=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-featurespec_3/3.2.19/scalatest-featurespec_3-3.2.19.jar"
+            "sha256": "uOEQg06p5C9NW4+JTdB0cAuKI+0wM7Xs3ckBWa6IH3s=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-featurespec_3/3.2.20/scalatest-featurespec_3-3.2.20.jar"
           },
           {
-            "sha256": "WJtdUz6QgEkTAcF15RBCLpjeIsb5I2SkwNxZigZk7YM=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-featurespec_3/3.2.19/scalatest-featurespec_3-3.2.19.pom"
+            "sha256": "phv7J1xXsUHoyo+IBtlfVk+zmFIYhqMMO9mJ4kGXIvE=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-featurespec_3/3.2.20/scalatest-featurespec_3-3.2.20.pom"
           },
           {
-            "sha256": "hab7IoXyBEVhXGeApJjDvKmeTCqtMvq290ICvcYeVqk=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-flatspec_3/3.2.19/scalatest-flatspec_3-3.2.19.jar"
+            "sha256": "7bwQxQjYl7jAf3qPwJbLW40uch81WZC7wXdbi7b5Lrw=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-flatspec_3/3.2.20/scalatest-flatspec_3-3.2.20.jar"
           },
           {
-            "sha256": "1by6OwH9sxbJYIo5e4r29g/U/+g+5zR575t6zEz1p3A=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-flatspec_3/3.2.19/scalatest-flatspec_3-3.2.19.pom"
+            "sha256": "aqbd5vK7LrhP07dQRA3wzTEEajyU3VNrUw31wA3TbUk=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-flatspec_3/3.2.20/scalatest-flatspec_3-3.2.20.pom"
           },
           {
-            "sha256": "68hXOHR2Y2gxY2ZJXc3+DMptgILcnMCLWi/Qg0za7MA=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-freespec_3/3.2.19/scalatest-freespec_3-3.2.19.jar"
+            "sha256": "G28UazxKYKPT3iFBDv1ywlAZbzfvJqcwzBHMsZM9iv4=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-freespec_3/3.2.20/scalatest-freespec_3-3.2.20.jar"
           },
           {
-            "sha256": "C2TKO5WMLMNe/2oIK0ZU6HtrIKr0ev0jd8LYMNqNhXs=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-freespec_3/3.2.19/scalatest-freespec_3-3.2.19.pom"
+            "sha256": "Ocfle1A8kzR9yek9uKFswFFBNUHjf8WvXjNGj7hez9s=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-freespec_3/3.2.20/scalatest-freespec_3-3.2.20.pom"
           },
           {
-            "sha256": "hytoifrHd6qBPSH7Xx6JcQQHeFph6xilcBQra+EDiac=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funspec_3/3.2.19/scalatest-funspec_3-3.2.19.jar"
+            "sha256": "TQirWHV1+dhqdIFTcUqUQguoPuku0xEgNDPSYU8HadY=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funspec_3/3.2.20/scalatest-funspec_3-3.2.20.jar"
           },
           {
-            "sha256": "Jbr+q7dPc06zbd7m8XjGMaZTRgGdQShYRNnvKJXuK8E=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funspec_3/3.2.19/scalatest-funspec_3-3.2.19.pom"
+            "sha256": "iyzjjDMiY6zgGgQJV6vvRNuPhYtPXWNXI0RNCmLeJsk=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funspec_3/3.2.20/scalatest-funspec_3-3.2.20.pom"
           },
           {
-            "sha256": "QhKcwVa9iXjZpDir1XAB/EKrq/GPYXjL7pHQqUiTNOA=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funsuite_3/3.2.19/scalatest-funsuite_3-3.2.19.jar"
+            "sha256": "EoFelWfT63CbqX6T7CAM+qGdEeJA5tKVv1KfRZpzPC4=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funsuite_3/3.2.20/scalatest-funsuite_3-3.2.20.jar"
           },
           {
-            "sha256": "QEXXQCQ2o1u4e69EdCdZiJL3coCjVsW2cDUkJuQpNHg=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funsuite_3/3.2.19/scalatest-funsuite_3-3.2.19.pom"
+            "sha256": "BIXxroP0DtmMPwTtG1+rtOtyvOUfOwhu6FkKgi9roII=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funsuite_3/3.2.20/scalatest-funsuite_3-3.2.20.pom"
           },
           {
-            "sha256": "cj/s3w6kVClH71F0BoxOBc0hRaPctv/HlweTaMlKGH4=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-matchers-core_3/3.2.19/scalatest-matchers-core_3-3.2.19.jar"
+            "sha256": "71lVjAPaRHcnBdAS4fNE5XOidt5mQy8VPwkm+LA/MA0=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-matchers-core_3/3.2.20/scalatest-matchers-core_3-3.2.20.jar"
           },
           {
-            "sha256": "ix9qJG/xkU9EVQ8/mKlSk6BrHTz55QX3vhqP6QFiABY=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-matchers-core_3/3.2.19/scalatest-matchers-core_3-3.2.19.pom"
+            "sha256": "fiZyBpKWs2wSejyHoBl4JqIbmR50xl/jLHOM5oiT6Eg=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-matchers-core_3/3.2.20/scalatest-matchers-core_3-3.2.20.pom"
           },
           {
-            "sha256": "g392tz/ymftnSLoK/063ydnAAlJ0GtK8Fa85mNLgVYw=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-mustmatchers_3/3.2.19/scalatest-mustmatchers_3-3.2.19.jar"
+            "sha256": "SNpyq/RXSJ0TuKEq2+YJ9A5jxvEomIdtYKlOqT0EA7E=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-mustmatchers_3/3.2.20/scalatest-mustmatchers_3-3.2.20.jar"
           },
           {
-            "sha256": "Fr/5O5yG0cQ6uUXBERZwgegMGWjKVB5nCzPyz+azW54=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-mustmatchers_3/3.2.19/scalatest-mustmatchers_3-3.2.19.pom"
+            "sha256": "CR9PWQkho2vIYzIDQMOX1kye0TNTjwo/NF2lBxlBTls=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-mustmatchers_3/3.2.20/scalatest-mustmatchers_3-3.2.20.pom"
           },
           {
-            "sha256": "awM+c/OlNxejKg1NNa4gIaCv6KAoxC2mL7k3kyk0vOM=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-propspec_3/3.2.19/scalatest-propspec_3-3.2.19.jar"
+            "sha256": "kScrMfsN9tOadgVE/zVBc9d/62VI3pZX63ByC6rQ9U4=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-propspec_3/3.2.20/scalatest-propspec_3-3.2.20.jar"
           },
           {
-            "sha256": "/GXeSBNTT6Q6beJdwJ5261HcxLUHw/2nkkLBhR3C0yY=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-propspec_3/3.2.19/scalatest-propspec_3-3.2.19.pom"
+            "sha256": "RFSfsrF7z1bJzfW7u3D7g/OzhaWjB+gZEffy4pQ+hFs=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-propspec_3/3.2.20/scalatest-propspec_3-3.2.20.pom"
           },
           {
-            "sha256": "gnt4plwlodxK90encR4kx4X66Sw5YA/TV6fUhvzOLno=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-refspec_3/3.2.19/scalatest-refspec_3-3.2.19.jar"
+            "sha256": "6un9yDmjZZ6Bej8i0MDAemz7CwNQloMdCksMBPvA3RE=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-refspec_3/3.2.20/scalatest-refspec_3-3.2.20.jar"
           },
           {
-            "sha256": "FrnpB8z/SNx9MxutGmI528uJur21yWn5nDIqX3kjBzo=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-refspec_3/3.2.19/scalatest-refspec_3-3.2.19.pom"
+            "sha256": "jz8ZT/1dtZzXejP2GFFYm9zle3HzMowObCmve7GxWF4=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-refspec_3/3.2.20/scalatest-refspec_3-3.2.20.pom"
           },
           {
-            "sha256": "dt3ON/cQ6pa9s+68tLsKASX8cPsuuqfMdMm9KChLaiM=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-shouldmatchers_3/3.2.19/scalatest-shouldmatchers_3-3.2.19.jar"
+            "sha256": "JVsKpXElCsNuSuSeWA5+UYLHEX7ThfqeT3Mts8pe6lw=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-shouldmatchers_3/3.2.20/scalatest-shouldmatchers_3-3.2.20.jar"
           },
           {
-            "sha256": "gm67IYWTo0dw4cd4NM/gu2MV+ryLMkBsjW27iyagWnU=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-shouldmatchers_3/3.2.19/scalatest-shouldmatchers_3-3.2.19.pom"
+            "sha256": "db1IkmF5eccLyLEBNwLPZrn6SmxPzS9OdSNaywzilx4=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-shouldmatchers_3/3.2.20/scalatest-shouldmatchers_3-3.2.20.pom"
           },
           {
-            "sha256": "xqzOCViwhsuFfE2mEH+QO2FmpG36JR9U06CGkhLiKcc=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-wordspec_3/3.2.19/scalatest-wordspec_3-3.2.19.jar"
+            "sha256": "YR5KN4MLXSvyxbgHOcWwlDSShpHA8biM0QR4wUNkpI8=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-wordspec_3/3.2.20/scalatest-wordspec_3-3.2.20.jar"
           },
           {
-            "sha256": "rsF4sJTyF2wa00C+RnGEF2Blo7oEzeTBh5R891D2Q94=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-wordspec_3/3.2.19/scalatest-wordspec_3-3.2.19.pom"
+            "sha256": "9+Li6H3CIymGMX1fomAqtHxW4N4orh9h9w1sCm17t3A=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-wordspec_3/3.2.20/scalatest-wordspec_3-3.2.20.pom"
           },
           {
             "sha256": "3XXcVpQo6jlBk/0YBkbWH4rfQYVP7KwvbVlkv+Lx4xM=",
@@ -1340,12 +1340,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.10/2.0.M6-SNAP24/scalatest_2.10-2.0.M6-SNAP24.pom"
           },
           {
-            "sha256": "zYhrpCYV/g1zDdVxl+buU+6wYs/QtNjF2XV8l3wP3Pg=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_3/3.2.19/scalatest_3-3.2.19.jar"
+            "sha256": "98SIOTzbwE3fNqEL21fzDiOuehgj4+JEAdDyCRRuaEk=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_3/3.2.20/scalatest_3-3.2.20.jar"
           },
           {
-            "sha256": "sm/L9P8s29omVNPahuetfm/eFszEaoHsQCR+BorpMm8=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_3/3.2.19/scalatest_3-3.2.19.pom"
+            "sha256": "nMFmiySUhC1pkHEhpWTMp8hzwf8OGrC6XSmcsvBe5uQ=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_3/3.2.20/scalatest_3-3.2.20.pom"
           },
           {
             "sha256": "tR+IZ8kranIkmVV/w6H96ne9+e9XRyL+kM5DailVlFQ=",
@@ -1790,7 +1790,7 @@
           "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.12/3.2.19/scalatest_2.12-3.2.19.pom"
         }
       ],
-      "exportHash": "98852e03454452687e0b33530dac40496ee19ca5",
+      "exportHash": "582188461282135e035e19dba8863a011df80fec",
       "libraryDependencies": [
         {
           "sha256": "FWneZDfXHoeIBzAvjhsGoGti0hfNSjDoAZyVQ9ZoPf8=",
@@ -2935,10 +2935,6 @@
             "url": "https://repo1.maven.org/maven2/org/scala-native/auxlib_native0.5_3/0.5.0/auxlib_native0.5_3-0.5.0.pom"
           },
           {
-            "sha256": "cO7hlKmWhxa5/jn8jK4ocSbdHdj1B6pFoUagdnYSreg=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/auxlib_native0.5_3/0.5.1/auxlib_native0.5_3-0.5.1.pom"
-          },
-          {
             "sha256": "iZ9UKJMX9x3gcv1kgj453hakRRzmvJOuMwI+sLdiym0=",
             "url": "https://repo1.maven.org/maven2/org/scala-native/auxlib_native0.5_3/0.5.10/auxlib_native0.5_3-0.5.10.jar"
           },
@@ -2957,10 +2953,6 @@
           {
             "sha256": "f/0jkiXAkcTekmfeDu0GT9JAeSWKdIgOPAl73tVO8ps=",
             "url": "https://repo1.maven.org/maven2/org/scala-native/clib_native0.5_3/0.5.0/clib_native0.5_3-0.5.0.pom"
-          },
-          {
-            "sha256": "PD2MnDntOitEpWMnL3yCYr+qILhs5B4XXZDow/ITtPA=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/clib_native0.5_3/0.5.1/clib_native0.5_3-0.5.1.pom"
           },
           {
             "sha256": "KT/UXo7966BF3WP9Jl4yqpKT+1hujxAcH4S5BBdwI04=",
@@ -2983,10 +2975,6 @@
             "url": "https://repo1.maven.org/maven2/org/scala-native/javalib_native0.5_3/0.5.0/javalib_native0.5_3-0.5.0.pom"
           },
           {
-            "sha256": "2w5tMOYlwmPgCXvvDClJsFmv4nt9hsUn5j0qcLDv8sw=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/javalib_native0.5_3/0.5.1/javalib_native0.5_3-0.5.1.pom"
-          },
-          {
             "sha256": "dRBRj2V0OwwZU0tjKP+X8yP0nk/HQVzfMzpt+b3YWmo=",
             "url": "https://repo1.maven.org/maven2/org/scala-native/javalib_native0.5_3/0.5.10/javalib_native0.5_3-0.5.10.jar"
           },
@@ -3001,14 +2989,6 @@
           {
             "sha256": "AZ8mb5tzc4EcqTrlXis3ZPr47oTR8Pe7/ygVukSBEq0=",
             "url": "https://repo1.maven.org/maven2/org/scala-native/junit-runtime_native0.5_3/0.5.0/junit-runtime_native0.5_3-0.5.0.pom"
-          },
-          {
-            "sha256": "YhwtJ+Rpd4Dusuj2P+1u+sEE2YwqZE/skt/NPnyclvA=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/junit-runtime_native0.5_3/0.5.1/junit-runtime_native0.5_3-0.5.1.jar"
-          },
-          {
-            "sha256": "L7ogm/7zQBhPh+R/U4CVB9GfpOMpfz8PY+CZKxQ4xas=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/junit-runtime_native0.5_3/0.5.1/junit-runtime_native0.5_3-0.5.1.pom"
           },
           {
             "sha256": "ksv+sIEnonANBxv+aC6WcK8EiK6RxVgFOKoEv9y8rCs=",
@@ -3031,10 +3011,6 @@
             "url": "https://repo1.maven.org/maven2/org/scala-native/nativelib_native0.5_3/0.5.0/nativelib_native0.5_3-0.5.0.pom"
           },
           {
-            "sha256": "oIoFgYcWKJm6KuTkrqzKZNia/6kScmAnlCeKDKxLsUg=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/nativelib_native0.5_3/0.5.1/nativelib_native0.5_3-0.5.1.pom"
-          },
-          {
             "sha256": "ZiqBqr9UOulW3/Ylc2n2c9YlcTVDiL5+SQ5WXBxC27Y=",
             "url": "https://repo1.maven.org/maven2/org/scala-native/nativelib_native0.5_3/0.5.10/nativelib_native0.5_3-0.5.10.jar"
           },
@@ -3055,10 +3031,6 @@
             "url": "https://repo1.maven.org/maven2/org/scala-native/posixlib_native0.5_3/0.5.0/posixlib_native0.5_3-0.5.0.pom"
           },
           {
-            "sha256": "6BeKVxKVtI8pAR4YoVZRxNs8QfOU+SVQ1YRPGSj0imw=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/posixlib_native0.5_3/0.5.1/posixlib_native0.5_3-0.5.1.pom"
-          },
-          {
             "sha256": "2nftFj1CrNwlHrkrLxPWGqgSZATW19UfpbjeiMzsAuk=",
             "url": "https://repo1.maven.org/maven2/org/scala-native/posixlib_native0.5_3/0.5.10/posixlib_native0.5_3-0.5.10.jar"
           },
@@ -3071,10 +3043,6 @@
             "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.1.3+0.5.0/scala3lib_native0.5_3-3.1.3+0.5.0.pom"
           },
           {
-            "sha256": "sRMWuGEvU+5AkhhlnveYeCzK5dVwYQcry2DuQ2++k64=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.1.3+0.5.1/scala3lib_native0.5_3-3.1.3+0.5.1.pom"
-          },
-          {
             "sha256": "8LFg+wuBGBxXrn62mey4G2F/BPeHnfm4rox1BnhhE6w=",
             "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.1.3+0.5.10/scala3lib_native0.5_3-3.1.3+0.5.10.pom"
           },
@@ -3083,8 +3051,8 @@
             "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.3.3+0.5.0/scala3lib_native0.5_3-3.3.3+0.5.0.pom"
           },
           {
-            "sha256": "nXKJJdV0tri2J7PRhIYVFneqgBT2dJ3yq8S5uSlHw/A=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.3.3+0.5.1/scala3lib_native0.5_3-3.3.3+0.5.1.pom"
+            "sha256": "SGi8u6PIq4D4jgeIuth/dCu7RGdnRB2C892oZrtZFF0=",
+            "url": "https://repo1.maven.org/maven2/org/scala-native/scala3lib_native0.5_3/3.3.3+0.5.10/scala3lib_native0.5_3-3.3.3+0.5.10.pom"
           },
           {
             "sha256": "pEoPWO3KnlhQ6UTh3fErzlMpfcvDIn1e3n6U608FBoQ=",
@@ -3099,10 +3067,6 @@
             "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_2.13/2.13.13+0.5.0/scalalib_native0.5_2.13-2.13.13+0.5.0.pom"
           },
           {
-            "sha256": "uFKB43OXVh2bb72YY1H1/v96XJY6uvQlMW2RMWcbz0c=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_2.13/2.13.13+0.5.1/scalalib_native0.5_2.13-2.13.13+0.5.1.pom"
-          },
-          {
             "sha256": "7Rn9GFFWlbA+6x9VY9k46dgy7zxV755fLppDKIpm9tQ=",
             "url": "https://repo1.maven.org/maven2/org/scala-native/scalalib_native0.5_2.13/2.13.18+0.5.10/scalalib_native0.5_2.13-2.13.18+0.5.10.jar"
           },
@@ -3113,10 +3077,6 @@
           {
             "sha256": "tTBGxrzi4UlzCfnS9K3aWvRc6RHXbXpsqrWv0w/eqQ4=",
             "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.0/test-interface-sbt-defs_native0.5_3-0.5.0.pom"
-          },
-          {
-            "sha256": "iN1EHj/Gh4PMB9uJO5orbneJoSWmw4Q1JGeHNlqLhPg=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface-sbt-defs_native0.5_3/0.5.1/test-interface-sbt-defs_native0.5_3-0.5.1.pom"
           },
           {
             "sha256": "VXXJAixfomituOw9iuEP11OjVIEzpP3Tu/FnYEcFf3s=",
@@ -3131,10 +3091,6 @@
             "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.0/test-interface_native0.5_3-0.5.0.pom"
           },
           {
-            "sha256": "N7J49jrPDVMvunKFhqvxZPqencxpo7AMW/cUAIUBWNk=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.1/test-interface_native0.5_3-0.5.1.pom"
-          },
-          {
             "sha256": "gknJmSRMML4aHCLeJ4kSDZc2KEIeyXIn0WFy7ls16ak=",
             "url": "https://repo1.maven.org/maven2/org/scala-native/test-interface_native0.5_3/0.5.10/test-interface_native0.5_3-0.5.10.jar"
           },
@@ -3145,10 +3101,6 @@
           {
             "sha256": "LvQ/35T7y63/FZw8/f2Xj5qRTUoA0tGySaqeTbZaoXw=",
             "url": "https://repo1.maven.org/maven2/org/scala-native/windowslib_native0.5_3/0.5.0/windowslib_native0.5_3-0.5.0.pom"
-          },
-          {
-            "sha256": "yNrlgxGq692epRbu5+tSlFDUeD46X8LPk7Y4/3d1jY8=",
-            "url": "https://repo1.maven.org/maven2/org/scala-native/windowslib_native0.5_3/0.5.1/windowslib_native0.5_3-0.5.1.pom"
           },
           {
             "sha256": "zNVMrkELRwElX/9t7JZow5z60686n3BKnLWClf/51qo=",
@@ -3191,12 +3143,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalactic/scalactic_2.12/3.2.19/scalactic_2.12-3.2.19.pom"
           },
           {
-            "sha256": "PNzR55pY5D5aH8+b/NptGZkaA2KUcr0JFADizGkt1jk=",
-            "url": "https://repo1.maven.org/maven2/org/scalactic/scalactic_native0.5_3/3.2.19/scalactic_native0.5_3-3.2.19.jar"
+            "sha256": "6LS+yKhci0y+jWIVQI0jR6UgnRzVlcH/6mxoVf0CDkk=",
+            "url": "https://repo1.maven.org/maven2/org/scalactic/scalactic_native0.5_3/3.2.20/scalactic_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "2owSySOIMOrbGvf8cU/3f5b70Ti6HzB5cM/8Isl4OXk=",
-            "url": "https://repo1.maven.org/maven2/org/scalactic/scalactic_native0.5_3/3.2.19/scalactic_native0.5_3-3.2.19.pom"
+            "sha256": "49loia0v8lBNqHO1UJceer21am6ylrlocD0bkBAB6yc=",
+            "url": "https://repo1.maven.org/maven2/org/scalactic/scalactic_native0.5_3/3.2.20/scalactic_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "Xca4+lOW/p4afCty3xdKjrPpJ3DNw+cGNtPrpnPNDaM=",
@@ -3215,12 +3167,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-core_2.12/3.2.19/scalatest-core_2.12-3.2.19.pom"
           },
           {
-            "sha256": "YBcTHLVoiCgtVx5msoILgeNysbat5c/LEztQP3oQZog=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-core_native0.5_3/3.2.19/scalatest-core_native0.5_3-3.2.19.jar"
+            "sha256": "4PTr/bXoyYUA1ZuYgjR40vrtmLzDPOKZmeGWkIj8NXQ=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-core_native0.5_3/3.2.20/scalatest-core_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "ISiQy2oLk2BsVQPHgG5mlcIWxc6ZNpSDXiy72AObg9U=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-core_native0.5_3/3.2.19/scalatest-core_native0.5_3-3.2.19.pom"
+            "sha256": "SR5X309uWiIFs9avYM3CXkILO+cu0AcSFrX4RmzsTzA=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-core_native0.5_3/3.2.20/scalatest-core_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "RkTllmQ5glkaszWt/s1VzTync6hZzZoWO7FP7QMrDJ8=",
@@ -3231,12 +3183,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-diagrams_2.12/3.2.19/scalatest-diagrams_2.12-3.2.19.pom"
           },
           {
-            "sha256": "890AmA/2CY/y1hyWS00ZRSMFstf1GZAtjrpRICw/EZc=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-diagrams_native0.5_3/3.2.19/scalatest-diagrams_native0.5_3-3.2.19.jar"
+            "sha256": "gzy/xo3RNrSRcCwP6cBuQBtVYqFPHXbVRgeSL4rSOn0=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-diagrams_native0.5_3/3.2.20/scalatest-diagrams_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "u/6VnWfm6gb1d3xMUU2ZTArYjqI8QZgEuqHaIAZY8cc=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-diagrams_native0.5_3/3.2.19/scalatest-diagrams_native0.5_3-3.2.19.pom"
+            "sha256": "my0Gv0JLkVVf05sunNbJGjYoGwouKeQcVGg1p6ycmzA=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-diagrams_native0.5_3/3.2.20/scalatest-diagrams_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "pxc+BDOIMLA8s2aDm9A96xdl4Gus00FMMGVIugMoABY=",
@@ -3247,12 +3199,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-featurespec_2.12/3.2.19/scalatest-featurespec_2.12-3.2.19.pom"
           },
           {
-            "sha256": "j+f7qcUzssQn4S0eXNa42sj/cm8oNPXp+j7faPDDlXY=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-featurespec_native0.5_3/3.2.19/scalatest-featurespec_native0.5_3-3.2.19.jar"
+            "sha256": "3Nj2pSU76U0kx598Tl4zjgQceo1rPDyLAncADjy7L6M=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-featurespec_native0.5_3/3.2.20/scalatest-featurespec_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "NxWFKCoScAW8Jc2NG1vqstHtNFmjQuOWC0bfsHoulC8=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-featurespec_native0.5_3/3.2.19/scalatest-featurespec_native0.5_3-3.2.19.pom"
+            "sha256": "de6hRdClADPU30kUwdHiX18kDGfoHKIixhucvgPJqrs=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-featurespec_native0.5_3/3.2.20/scalatest-featurespec_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "s5dPpvH0uXtYOslJEa27W3ikilwGEBhg0BXw6d8OATE=",
@@ -3263,12 +3215,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-flatspec_2.12/3.2.19/scalatest-flatspec_2.12-3.2.19.pom"
           },
           {
-            "sha256": "VWzObhou3n3XzTgRnXkc2TEL+T4t5EiwZq/l90+zjXk=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-flatspec_native0.5_3/3.2.19/scalatest-flatspec_native0.5_3-3.2.19.jar"
+            "sha256": "kFkOoPnN3l/gcQYgea57SkHbZQT6cLvIYMW3Fazy3uQ=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-flatspec_native0.5_3/3.2.20/scalatest-flatspec_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "TJ7OkJRwdlTg8yiZemgJwJlFf13CnC6bkZhMACUh000=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-flatspec_native0.5_3/3.2.19/scalatest-flatspec_native0.5_3-3.2.19.pom"
+            "sha256": "i/E/G1XaenbiAcH6JouZGe3Zj7hiq+5uj7NEB2FZNTg=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-flatspec_native0.5_3/3.2.20/scalatest-flatspec_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "AIytX2ghUCjzEgziTNj0DuQ1Jg0URVFDiE2o9mSWx7I=",
@@ -3279,12 +3231,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-freespec_2.12/3.2.19/scalatest-freespec_2.12-3.2.19.pom"
           },
           {
-            "sha256": "cHEiAp5BpESEls/Ow42hgMBdGu7S/rnAwRYkiKkis0U=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-freespec_native0.5_3/3.2.19/scalatest-freespec_native0.5_3-3.2.19.jar"
+            "sha256": "GhOTaRejq3fTw7mDoAuF7i3iATXQzksFsegi3EYrmxc=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-freespec_native0.5_3/3.2.20/scalatest-freespec_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "15oIN7/+wrMkOLNDCKu5UsRkfSF/l6XwyguwEeNQUMA=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-freespec_native0.5_3/3.2.19/scalatest-freespec_native0.5_3-3.2.19.pom"
+            "sha256": "MEQBOWDdJuwK/ULntGe3ejVoiOxfkl2TDU7AwKkcf6w=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-freespec_native0.5_3/3.2.20/scalatest-freespec_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "JGRgKQEaoFKMu6PRQyAWfxZgQiXrcur5VSETSsgpROY=",
@@ -3295,12 +3247,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funspec_2.12/3.2.19/scalatest-funspec_2.12-3.2.19.pom"
           },
           {
-            "sha256": "NRkfctqlK/TiBD5U4uBUpLbsI1enfzUDUR/DKzKuiFg=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funspec_native0.5_3/3.2.19/scalatest-funspec_native0.5_3-3.2.19.jar"
+            "sha256": "JC+epV2iG/6V3WEr/M/AiSOm7TT2dcS3Xid14nqfe5I=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funspec_native0.5_3/3.2.20/scalatest-funspec_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "aAm4jq0scUSJXtLnsAsqyriy13iBUeVTynjSnEkrjdY=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funspec_native0.5_3/3.2.19/scalatest-funspec_native0.5_3-3.2.19.pom"
+            "sha256": "9c3Gf2NUjjvdr29ydgVcu7SbX9/9qC3V0AZqbTaCYgI=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funspec_native0.5_3/3.2.20/scalatest-funspec_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "TM6hDs8/Hs/RbXyrTaLb7JZdoc68XpVq7dyBTieEW6g=",
@@ -3311,12 +3263,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funsuite_2.12/3.2.19/scalatest-funsuite_2.12-3.2.19.pom"
           },
           {
-            "sha256": "If73QBvXFLyZK/561YStF8opwVkaE8LDaNGgl/HaPMM=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funsuite_native0.5_3/3.2.19/scalatest-funsuite_native0.5_3-3.2.19.jar"
+            "sha256": "ZUZUKBJpNf/6RywP8xJqdD0FdGK0cYvg1I3Qmc3ftvw=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funsuite_native0.5_3/3.2.20/scalatest-funsuite_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "jqhP6iWZTUq800DA6Si1suu7qe0b2NGIeeasjEzSOtk=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funsuite_native0.5_3/3.2.19/scalatest-funsuite_native0.5_3-3.2.19.pom"
+            "sha256": "xoY2l1kPmE0IlM40YimfaGt+Pov2KQfPkKEa9/XlQtI=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-funsuite_native0.5_3/3.2.20/scalatest-funsuite_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "EEgZZpLOitBv7Q5vtBzofWsgVka+PCp402VM6QqdW8U=",
@@ -3327,12 +3279,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-matchers-core_2.12/3.2.19/scalatest-matchers-core_2.12-3.2.19.pom"
           },
           {
-            "sha256": "CIa0SdACMI1Fzd6mqEVBpTpeJi2RKmgswt8m5woFsJY=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-matchers-core_native0.5_3/3.2.19/scalatest-matchers-core_native0.5_3-3.2.19.jar"
+            "sha256": "6//3/2CijVSM66oMicTLmyFHgHs9s50dOaTQpJu/YgI=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-matchers-core_native0.5_3/3.2.20/scalatest-matchers-core_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "DPdHiny/qfuGEf+DJjQ3ptL6+oHdM7sVrdKS1WKjPAg=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-matchers-core_native0.5_3/3.2.19/scalatest-matchers-core_native0.5_3-3.2.19.pom"
+            "sha256": "bEQztlG8oJyLdelPC5jyCh0p8EunbcBns41niXJ+ZSw=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-matchers-core_native0.5_3/3.2.20/scalatest-matchers-core_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "6HmtlvfFq1WJlLNNmpbPUNxrMvfDTn3wWG1yumw8vdw=",
@@ -3343,12 +3295,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-mustmatchers_2.12/3.2.19/scalatest-mustmatchers_2.12-3.2.19.pom"
           },
           {
-            "sha256": "estC4mW3XVZ3ptGTMZKZ8LuSC8zjyNLt/m+eSDhT5Zc=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-mustmatchers_native0.5_3/3.2.19/scalatest-mustmatchers_native0.5_3-3.2.19.jar"
+            "sha256": "U5OQXIWjJoYgQECBg7aYSoCH0aVJYg7gSE9wxw0KQyk=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-mustmatchers_native0.5_3/3.2.20/scalatest-mustmatchers_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "DvtMoOnRhXE1Ps3NZJew6990Pdg7pPGKyYAD0pd92gY=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-mustmatchers_native0.5_3/3.2.19/scalatest-mustmatchers_native0.5_3-3.2.19.pom"
+            "sha256": "baZ1NSoytlEHX4E3osg2trf9PvAbpXaHN5FnLWZ1P2E=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-mustmatchers_native0.5_3/3.2.20/scalatest-mustmatchers_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "dIL0sTnocPFLjTL0rVehGEbX1efqZEiuvTRBa+58J0k=",
@@ -3359,12 +3311,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-propspec_2.12/3.2.19/scalatest-propspec_2.12-3.2.19.pom"
           },
           {
-            "sha256": "zSi2XmKOofHnkcYb4UU1sDIhND76LAmPt+UOv+y7dUw=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-propspec_native0.5_3/3.2.19/scalatest-propspec_native0.5_3-3.2.19.jar"
+            "sha256": "CLMySCOcNcNnHTEbi22chW2cOd5jp1+H5f4nv3JOcQ4=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-propspec_native0.5_3/3.2.20/scalatest-propspec_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "uTrpLDLDIkzGTv2N9kD4xfPlXeCqVtsnNlChw9LttIg=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-propspec_native0.5_3/3.2.19/scalatest-propspec_native0.5_3-3.2.19.pom"
+            "sha256": "YYcFt6/NW7k5u13p3eKY/s0AtFoVfxBcgEkunwjJcNQ=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-propspec_native0.5_3/3.2.20/scalatest-propspec_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "PArklkvS9W/XFARIByS/LulNCBGH3fJwS2A/iX8fqhY=",
@@ -3375,12 +3327,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-refspec_2.12/3.2.19/scalatest-refspec_2.12-3.2.19.pom"
           },
           {
-            "sha256": "Dad3PkNyvXoGM0D5nhLLFkgr65YH5HR8Pi04ZIq3wv0=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-refspec_native0.5_3/3.2.19/scalatest-refspec_native0.5_3-3.2.19.jar"
+            "sha256": "0/PqKkCfopq2b4ED9/VbAPKqKbdeMaccN/fhIFizjz0=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-refspec_native0.5_3/3.2.20/scalatest-refspec_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "b0GU2R0n5AZmqngK8bcuOpI6ErlkqdVjVQWi5LuirXs=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-refspec_native0.5_3/3.2.19/scalatest-refspec_native0.5_3-3.2.19.pom"
+            "sha256": "PdcxLa3wyIXzx4hDxf+0HzvoxbS5FQXUyVwI3FjxJTY=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-refspec_native0.5_3/3.2.20/scalatest-refspec_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "Nuj6STWUXJE8aYnpgFA1WBTC9u6WsLNQ2jzHbkcesU8=",
@@ -3391,12 +3343,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-shouldmatchers_2.12/3.2.19/scalatest-shouldmatchers_2.12-3.2.19.pom"
           },
           {
-            "sha256": "TBFM0gpQQmSeBbuDy7rszmrIe+LuviFTtXR03LGN8nA=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-shouldmatchers_native0.5_3/3.2.19/scalatest-shouldmatchers_native0.5_3-3.2.19.jar"
+            "sha256": "VaHgOOsD4+AwaxuC7CawvmWBXLpJfRnwsSJRemRHtbI=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-shouldmatchers_native0.5_3/3.2.20/scalatest-shouldmatchers_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "/Qp//mel6fXBdfh3UuVOdXm7eiNm21NFGPoH9eWCZJw=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-shouldmatchers_native0.5_3/3.2.19/scalatest-shouldmatchers_native0.5_3-3.2.19.pom"
+            "sha256": "c+GbszFsH962SsjfNUDzvOgMARnIf+VPCva5efSmb2U=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-shouldmatchers_native0.5_3/3.2.20/scalatest-shouldmatchers_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "/1wevgPb9yj20qaYuHV9lAy+rgECtLozAcTvdEcDPhg=",
@@ -3407,12 +3359,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-wordspec_2.12/3.2.19/scalatest-wordspec_2.12-3.2.19.pom"
           },
           {
-            "sha256": "945auUHiSBU04KHdSxFUA8rEBptZnoUcA/pBHm/2lvw=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-wordspec_native0.5_3/3.2.19/scalatest-wordspec_native0.5_3-3.2.19.jar"
+            "sha256": "5qNGwHnJHdL3a4XD4JyZ9YmEWBXVcSdKE3XYhOQL2eo=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-wordspec_native0.5_3/3.2.20/scalatest-wordspec_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "BVGE9EPFbV//ls+OlIEQz7Kj7y6DzQpzjBsZbUSU+i4=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-wordspec_native0.5_3/3.2.19/scalatest-wordspec_native0.5_3-3.2.19.pom"
+            "sha256": "FRElBw5moe7p8br5dafG9JYOXL5nPx18jY5tijGzxgo=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest-wordspec_native0.5_3/3.2.20/scalatest-wordspec_native0.5_3-3.2.20.pom"
           },
           {
             "sha256": "n33HULvW7rUvDYvHxUKs5G2p79ygEopaknaaRI4GWmI=",
@@ -3423,12 +3375,12 @@
             "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.12/3.2.19/scalatest_2.12-3.2.19.pom"
           },
           {
-            "sha256": "XXSjLf1uIgNApmMKrO0EHGaba2fA/JJqpsf+owB9xkA=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_native0.5_3/3.2.19/scalatest_native0.5_3-3.2.19.jar"
+            "sha256": "+zJwaYED7oJGVA17s2IYJHQXCIEVb702NFngLbkKlLo=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_native0.5_3/3.2.20/scalatest_native0.5_3-3.2.20.jar"
           },
           {
-            "sha256": "tOHXrC9Sawe+MWmYBB/AhkWPD5JhNvGWh1jIdVpsDok=",
-            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_native0.5_3/3.2.19/scalatest_native0.5_3-3.2.19.pom"
+            "sha256": "IPYAe+U0twvBbk8fMmHtHN89P5w+HuExeOD6Q3TwePo=",
+            "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_native0.5_3/3.2.20/scalatest_native0.5_3-3.2.20.pom"
           }
         ],
         "resourceDirs": [

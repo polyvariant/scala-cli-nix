@@ -1,5 +1,5 @@
-//> using test.dep dev.zio::zio-test::2.1.14
-//> using test.dep dev.zio::zio-test-sbt::2.1.14
+//> using test.dep dev.zio::zio-test::2.1.26
+//> using test.dep dev.zio::zio-test-sbt::2.1.26
 //> using testFramework zio.test.sbt.ZTestFramework
 
 import zio.test._

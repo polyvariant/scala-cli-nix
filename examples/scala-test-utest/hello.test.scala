@@ -1,4 +1,4 @@
-//> using test.dep com.lihaoyi::utest::0.8.5
+//> using test.dep com.lihaoyi::utest::0.9.5
 //> using testFramework utest.runner.Framework
 
 import utest._

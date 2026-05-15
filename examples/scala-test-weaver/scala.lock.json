@@ -436,7 +436,7 @@
           "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.12/3.2.16/scalatest_2.12-3.2.16.pom"
         }
       ],
-      "exportHash": "0dbd5a863870db15d4ec4f835cda6fe652c0cd7f",
+      "exportHash": "a33637022a82775ccee5fa76e222f3c06760001e",
       "libraryDependencies": [
         {
           "sha256": "l4RavkKm7B1yNEapz+A1VlRCYZyvugN0EXpUltNlHok=",
@@ -1550,7 +1550,7 @@
           "url": "https://repo1.maven.org/maven2/org/scalatest/scalatest_2.12/3.2.16/scalatest_2.12-3.2.16.pom"
         }
       ],
-      "exportHash": "646b2ec460cd3b8242084af33cfd8ced1d0ddbb1",
+      "exportHash": "dd02a0a37dbd5bb9073cc843bddde2a2ca721cf1",
       "libraryDependencies": [
         {
           "sha256": "FWneZDfXHoeIBzAvjhsGoGti0hfNSjDoAZyVQ9ZoPf8=",
