@@ -835,3 +835,72 @@ class ExportScopeResolversTests extends munit.FunSuite {
     assertEquals(scope.resolvers, Nil)
   }
 }
+
+
+class ParseGitHubUrlTests extends munit.FunSuite {
+
+  test("https://github.com/owner/repo (no ref)") {
+    assertEquals(
+      parseGitHubUrl("https://github.com/polyvariant/scala-monitor"),
+      Right(GitHubRepo("polyvariant", "scala-monitor", None))
+    )
+  }
+
+  test("trailing slash is tolerated") {
+    assertEquals(
+      parseGitHubUrl("https://github.com/polyvariant/scala-monitor/"),
+      Right(GitHubRepo("polyvariant", "scala-monitor", None))
+    )
+  }
+
+  test(".git suffix is stripped") {
+    assertEquals(
+      parseGitHubUrl("https://github.com/polyvariant/scala-monitor.git"),
+      Right(GitHubRepo("polyvariant", "scala-monitor", None))
+    )
+  }
+
+  test("/tree/<sha> records the ref") {
+    assertEquals(
+      parseGitHubUrl(
+        "https://github.com/polyvariant/scala-monitor/tree/c410ca7595bff9c0e9d7a6ede5a6c66c073e9c38"
+      ),
+      Right(
+        GitHubRepo(
+          "polyvariant",
+          "scala-monitor",
+          Some("c410ca7595bff9c0e9d7a6ede5a6c66c073e9c38")
+        )
+      )
+    )
+  }
+
+  test("/tree/<tag> records the ref") {
+    assertEquals(
+      parseGitHubUrl("https://github.com/polyvariant/scala-monitor/tree/v0.5.6"),
+      Right(GitHubRepo("polyvariant", "scala-monitor", Some("v0.5.6")))
+    )
+  }
+
+  test("http:// is accepted (upgraded by Uri layer later)") {
+    assertEquals(
+      parseGitHubUrl("http://github.com/polyvariant/scala-monitor"),
+      Right(GitHubRepo("polyvariant", "scala-monitor", None))
+    )
+  }
+
+  test("subdir paths under /tree/<ref>/... are rejected") {
+    parseGitHubUrl("https://github.com/owner/repo/tree/main/cli") match {
+      case Left(msg) => assert(msg.contains("Subdirectory"))
+      case other     => fail(s"expected Left, got $other")
+    }
+  }
+
+  test("non-github URL is rejected") {
+    assert(parseGitHubUrl("https://gitlab.com/owner/repo").isLeft)
+  }
+
+  test("missing repo segment is rejected") {
+    assert(parseGitHubUrl("https://github.com/owner").isLeft)
+  }
+}

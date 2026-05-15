@@ -1257,7 +1257,10 @@ def resolveScalaCliNixUrl(ref: Option[String]): IO[String] = {
   }
 }
 
-def init(inputs: List[String], ref: Option[String]): IO[ExitCode] =
+def init(
+    inputs: List[String],
+    ref: Option[String]
+)(using Client[IO]): IO[ExitCode] =
   for {
     cwd <- Files[IO].currentWorkingDirectory
     lockExists <- Files[IO].exists(cwd / "scala.lock.json")
@@ -1266,22 +1269,34 @@ def init(inputs: List[String], ref: Option[String]): IO[ExitCode] =
         info(
           s"${C.bold}scala.lock.json${C.reset} already exists, running ${C.bold}lock${C.reset} instead."
         ) *> lock(inputs, sourceRoot = None)
-      else if (inputs.nonEmpty)
-        doInit(cwd, inputs, ref)
       else
-        Files[IO]
-          .list(cwd)
-          .filter(_.extName == ".scala")
-          .compile
-          .toList
-          .flatMap { scalaFiles =>
-            if (scalaFiles.isEmpty)
-              error("No .scala files found in current directory.")
-                .as(ExitCode.Error)
-            else
-              doInit(cwd, inputs, ref)
-          }
+        inputs match {
+          case singleUrl :: Nil if looksLikeGitHubUrl(singleUrl) =>
+            IO.fromEither(
+              parseGitHubUrl(singleUrl).leftMap(msg => new RuntimeException(msg))
+            ).flatMap(doInitFromGitHub(cwd, _, ref))
+          case _ if inputs.nonEmpty =>
+            doInit(cwd, inputs, ref)
+          case _ =>
+            Files[IO]
+              .list(cwd)
+              .filter(_.extName == ".scala")
+              .compile
+              .toList
+              .flatMap { scalaFiles =>
+                if (scalaFiles.isEmpty)
+                  error("No .scala files found in current directory.")
+                    .as(ExitCode.Error)
+                else
+                  doInit(cwd, inputs, ref)
+              }
+        }
   } yield result
+
+private def looksLikeGitHubUrl(s: String): Boolean = {
+  val lower = s.toLowerCase
+  lower.startsWith("https://github.com/") || lower.startsWith("http://github.com/")
+}
 
 private def doInit(
     cwd: Path,
@@ -1467,6 +1482,458 @@ private def doInit(
       s"${C.bold}Done!${C.reset} Run ${C.green}nix build${C.reset} to build your project."
     )
   } yield ExitCode.Success
+}
+
+/** GitHub-URL flavoured `init`. Resolves the URL to a pinned commit + tarball,
+  * writes a fetchFromGitHub-shaped `derivation.nix` next to a freshly-locked
+  * `scala.lock.json`. Unlike the local `doInit`, this path doesn't scaffold a
+  * `flake.nix` — community builds live inside the host repo's flake, not
+  * standalone. We print a hint for Scala-Native projects that may need
+  * `attrOverrides`-supplied native libs (libcurl, etc.).
+  */
+private def doInitFromGitHub(
+    cwd: Path,
+    repo: GitHubRepo,
+    scalaCliNixRef: Option[String]
+)(using Client[IO]): IO[ExitCode] = withHashCache {
+  for {
+    _ <- errln("")
+    _ <- step(
+      s"Resolving ${C.bold}${repo.owner}/${repo.repo}${C.reset}" +
+        repo.ref.fold("")(r => s" @ ${C.bold}$r${C.reset}") + "..."
+    )
+    resolved <- resolveRev(repo)
+    _ <- info(s"Commit: ${C.bold}${resolved.rev}${C.reset}")
+
+    _ <- step("Computing version...")
+    version <- computeVersion(resolved)
+    _ <- info(s"Version: ${C.bold}$version${C.reset}")
+
+    fetched <- prefetchTarball(resolved)
+    _ <- info(s"Source: ${C.dim}${fetched.storePath}${C.reset}")
+
+    derivationPath = cwd / "derivation.nix"
+    lockPath = cwd / "scala.lock.json"
+
+    derivationExists <- Files[IO].exists(derivationPath)
+    _ <-
+      if (derivationExists)
+        warn(s"${C.bold}derivation.nix${C.reset} already exists, skipping.")
+      else IO.unit
+
+    // scala-cli refuses to evaluate `//> using computeVersion git:dynver`
+    // when there's no .git (it materializes the source into its virtual-projects
+    // cache, which is .git-less). GitHub tarballs never have one. We copy the
+    // tarball to a writable dir, strip the directive, and lock against the copy.
+    // The generated derivation embeds a matching `runCommand` wrapper so the
+    // build step does the same.
+    sanitizedSrc <- sanitizeSrcForDynver(fetched.storePath)
+    needsDynverPatch = sanitizedSrc != fetched.storePath
+
+    _ <- step("Locking dependencies...")
+    lockContent <- computeLock(Nil, sourceRoot = Some(sanitizedSrc))
+    isNative = lockContent.contains("\"platform\": \"Native\"")
+
+    derivationContent = renderGitHubDerivation(
+      pname = repo.repo,
+      version = version,
+      resolved = resolved,
+      sha256Sri = fetched.sha256Sri,
+      needsDynverPatch = needsDynverPatch
+    )
+
+    _ <-
+      if (derivationExists) IO.unit
+      else writeFile(derivationPath, derivationContent)
+    _ <- writeFile(lockPath, lockContent)
+
+    _ <- errln("")
+    _ <- success(s"Wrote ${C.bold}derivation.nix${C.reset} and ${C.bold}scala.lock.json${C.reset}.")
+    _ <-
+      if (isNative) errln("") *> printNativeHint()
+      else IO.unit
+  } yield ExitCode.Success
+}
+
+/** Render the community-build `derivation.nix`. Single-target shape: the
+  * `target =` arg of `buildScalaCliApp` is omitted because we expect one
+  * target per community build (multi-target projects can switch to
+  * `buildScalaCliApps`, but that's a manual edit and rare for upstreams that
+  * don't already package themselves).
+  */
+def renderGitHubDerivation(
+    pname: String,
+    version: String,
+    resolved: ResolvedRepo,
+    sha256Sri: String,
+    needsDynverPatch: Boolean
+): String = {
+  val args =
+    if (needsDynverPatch) "{ scala-cli-nix, fetchFromGitHub, runCommand }"
+    else "{ scala-cli-nix, fetchFromGitHub }"
+
+  val fetchSection =
+    s"""  src = fetchFromGitHub {
+       |    owner = "${resolved.owner}";
+       |    repo = "${resolved.repo}";
+       |    rev = "${resolved.rev}";
+       |    hash = "$sha256Sri";
+       |  };""".stripMargin
+
+  val srcSection =
+    if (!needsDynverPatch)
+      fetchSection
+    else
+      s"""  # The upstream `project.scala` declares `//> using computeVersion git:dynver`,
+         |  # which scala-cli refuses to evaluate without a real .git directory. Strip
+         |  # it so the build matches what `scn init` saw at lock time (BuildInfo falls
+         |  # back to `projectVersion = None`).
+         |  src =
+         |    let
+         |      raw = fetchFromGitHub {
+         |        owner = "${resolved.owner}";
+         |        repo = "${resolved.repo}";
+         |        rev = "${resolved.rev}";
+         |        hash = "$sha256Sri";
+         |      };
+         |    in runCommand "${resolved.repo}-src-${resolved.shortRev}" { } ''
+         |      cp -r $${raw} $$out
+         |      chmod -R u+w $$out
+         |      find $$out -name '*.scala' -exec sed -i '/^\\/\\/> using computeVersion git:dynver$$/d' {} +
+         |    '';""".stripMargin
+
+  s"""$args:
+     |
+     |scala-cli-nix.buildScalaCliApp {
+     |  pname = "$pname";
+     |  version = "$version";
+     |$srcSection
+     |  lockFile = ./scala.lock.json;
+     |}
+     |""".stripMargin
+}
+
+/** Check whether any .scala file at `src` carries `//> using computeVersion git:dynver`,
+  * and if so produce a writable copy with the directive stripped. Returns the
+  * original path unchanged when no patch is needed.
+  *
+  * We use `find -exec grep -l ...` to detect, then `cp -r` + `sed -i` to patch.
+  * The temp dir is created under `$TMPDIR`; we leave it on disk because the
+  * caller may still be reading from it (lock writes its results before
+  * returning) — the OS cleans up on reboot.
+  */
+def sanitizeSrcForDynver(src: Path): IO[Path] = {
+  val dynverPattern = "//> using computeVersion git:dynver"
+  for {
+    hits <- exec(
+      "sh",
+      "-c",
+      s"""find ${shellEscape(src.toString)} -name '*.scala' -exec grep -l -F ${shellEscape(dynverPattern)} {} + || true"""
+    )
+    needsPatch = hits.trim.nonEmpty
+    result <-
+      if (!needsPatch) IO.pure(src)
+      else {
+        for {
+          _ <- info(
+            s"Source uses ${C.dim}git:dynver${C.reset}; patching for lock + build."
+          )
+          tmp <- exec("mktemp", "-d", "-t", "scn-init-XXXXXX").map(_.trim)
+          dest = Path(tmp) / "src"
+          _ <- exec("cp", "-r", src.toString, dest.toString)
+          _ <- exec("chmod", "-R", "u+w", dest.toString)
+          _ <- exec(
+            "sh",
+            "-c",
+            s"""find ${shellEscape(dest.toString)} -name '*.scala' -exec sed -i.bak '/^\\/\\/> using computeVersion git:dynver$$/d' {} + && find ${shellEscape(dest.toString)} -name '*.bak' -delete"""
+          )
+        } yield dest
+      }
+  } yield result
+}
+
+private def shellEscape(s: String): String =
+  "'" + s.replace("'", "'\\''") + "'"
+
+private def printNativeHint(): IO[Unit] =
+  errln(
+    s"""${C.bold}Hint:${C.reset} this is a Scala Native project. If `nix build` fails with a
+       |linker error, the binary likely needs extra native libs at link time
+       |(e.g. libcurl for sttp's CurlBackend, libidn2 on Linux). Pass them via
+       |`attrOverrides`:
+       |
+       |  ${C.dim}{ scala-cli-nix, fetchFromGitHub, lib, stdenv, curl, libidn2 }:${C.reset}
+       |
+       |  ${C.dim}scala-cli-nix.buildScalaCliApp {${C.reset}
+       |  ${C.dim}  ...${C.reset}
+       |  ${C.dim}  attrOverrides = attrs: _platform: attrs // {${C.reset}
+       |  ${C.dim}    buildInputs = (attrs.buildInputs or [])${C.reset}
+       |  ${C.dim}      ++ [ curl ]${C.reset}
+       |  ${C.dim}      ++ lib.optional stdenv.isLinux libidn2;${C.reset}
+       |  ${C.dim}  };${C.reset}
+       |  ${C.dim}}${C.reset}""".stripMargin
+  )
+
+// --- GitHub URL handling (for `init <url>`) ---
+
+/** A GitHub repo reference parsed from a browser URL:
+  *   - `https://github.com/<owner>/<repo>`              → ref = None
+  *   - `https://github.com/<owner>/<repo>/tree/<ref>`   → ref = Some(<ref>)
+  * `<ref>` is anything: a branch, a tag, a commit sha. We resolve it to a
+  * concrete sha later (see `resolveRev`).
+  */
+case class GitHubRepo(owner: String, repo: String, ref: Option[String])
+
+case class ResolvedRepo(owner: String, repo: String, rev: String) {
+  def shortRev: String = rev.take(7)
+  def archiveUrl: String = s"https://github.com/$owner/$repo/archive/$rev.tar.gz"
+}
+
+case class FetchedRepo(resolved: ResolvedRepo, sha256Sri: String, storePath: Path)
+
+/** Parse a GitHub web URL into owner/repo/ref. Trailing `.git` is tolerated;
+  * anything past `/tree/<ref>` (e.g. `/tree/main/path/inside`) is rejected
+  * because we don't have a notion of subdirectory roots yet.
+  */
+def parseGitHubUrl(url: String): Either[String, GitHubRepo] = {
+  val trimmed = url.trim.stripSuffix("/")
+  val stripped = trimmed
+    .stripPrefix("https://")
+    .stripPrefix("http://")
+
+  if (!stripped.startsWith("github.com/"))
+    Left(s"Not a github.com URL: $url")
+  else {
+    val parts = stripped.stripPrefix("github.com/").split('/').toList
+    parts match {
+      case owner :: rawRepo :: Nil =>
+        Right(GitHubRepo(owner, rawRepo.stripSuffix(".git"), None))
+      case owner :: rawRepo :: "tree" :: ref :: Nil =>
+        Right(GitHubRepo(owner, rawRepo.stripSuffix(".git"), Some(ref)))
+      case owner :: rawRepo :: "tree" :: _ =>
+        Left(
+          s"Subdirectory refs (`/tree/<ref>/<path>`) are not supported: $url"
+        )
+      case _ =>
+        Left(s"Unrecognised github.com URL shape: $url")
+    }
+  }
+}
+
+private val Sha1HexPattern = "^[0-9a-f]{40}$".r
+
+/** GitHub API base — kept here so test code can override (and so we touch one
+  * place if we ever proxy through a fork).
+  */
+private val GitHubApiBase: Uri =
+  Uri.unsafeFromString("https://api.github.com")
+
+/** Issue a GET against the GitHub REST API and return the response body, or
+  * fail with an HTTP-coded error. `Accept: application/vnd.github+json` is
+  * standard for v3 endpoints; no auth is sent — unauthenticated requests are
+  * fine for public repos at the rate we run them (one or two per `init`).
+  */
+private def githubApiGet(
+    path: String
+)(using client: Client[IO]): IO[String] = {
+  val uri = GitHubApiBase.withPath(Uri.Path.unsafeFromString(path))
+  val req = Request[IO](uri = uri).putHeaders(
+    org.http4s.headers.Accept(
+      org.http4s.MediaType.unsafeParse("application/vnd.github+json")
+    ),
+    org.http4s.headers.`User-Agent`(
+      org.http4s.ProductId("scala-cli-nix", Some("0.1"))
+    )
+  )
+  client.run(req).use { resp =>
+    resp.bodyText.compile.string.flatMap { body =>
+      resp.status match {
+        case Status.Ok => IO.pure(body)
+        case sc =>
+          IO.raiseError(
+            new RuntimeException(
+              s"GitHub API GET $path failed: HTTP ${sc.code} ${sc.reason}\n$body"
+            )
+          )
+      }
+    }
+  }
+}
+
+/** Resolve a ref to a commit sha. If `ref` is already a 40-char hex sha,
+  * skip the API call. Otherwise GET /repos/:owner/:repo/commits/:ref —
+  * GitHub returns the resolved commit (and follows branches & tags). When
+  * `ref` is None we resolve the repo's default branch via the repo metadata.
+  */
+def resolveRev(
+    repo: GitHubRepo
+)(using Client[IO]): IO[ResolvedRepo] =
+  repo.ref match {
+    case Some(r) if Sha1HexPattern.matches(r) =>
+      IO.pure(ResolvedRepo(repo.owner, repo.repo, r))
+    case refOpt =>
+      val refToResolve = refOpt match {
+        case Some(r) => IO.pure(r)
+        case None =>
+          githubApiGet(s"/repos/${repo.owner}/${repo.repo}").flatMap { body =>
+            IO.fromEither(
+              parseJson(body)
+                .flatMap(_.hcursor.downField("default_branch").as[String])
+                .leftMap(e =>
+                  new RuntimeException(
+                    s"Could not read default_branch from repo metadata: ${e.getMessage}"
+                  )
+                )
+            )
+          }
+      }
+      refToResolve.flatMap { r =>
+        githubApiGet(s"/repos/${repo.owner}/${repo.repo}/commits/$r").flatMap {
+          body =>
+            IO.fromEither(
+              parseJson(body)
+                .flatMap(_.hcursor.downField("sha").as[String])
+                .leftMap(e =>
+                  new RuntimeException(
+                    s"Could not read sha from commit metadata: ${e.getMessage}"
+                  )
+                )
+            ).map(sha => ResolvedRepo(repo.owner, repo.repo, sha))
+        }
+      }
+  }
+
+/** Pick the highest-semver tag that is an ancestor of `rev`. Returns `None`
+  * when no tag is reachable (fresh repo, or branch with no semver tag in its
+  * history yet). Tags are matched as `v?<major>.<minor>.<patch>`; tags with
+  * pre-release suffixes are ignored to keep the comparison simple.
+  *
+  * The reachability check uses `/compare/<tag>...<rev>`: if GitHub reports
+  * `status == "ahead"` or `"identical"`, the tag is an ancestor. `behind`
+  * means the tag is on a divergent branch; `diverged` means both.
+  */
+case class TagInfo(name: String, sha: String, semver: (Int, Int, Int))
+
+private val SemverTagPattern = """^v?(\d+)\.(\d+)\.(\d+)$""".r
+
+def listSemverTags(
+    owner: String,
+    repo: String
+)(using Client[IO]): IO[List[TagInfo]] =
+  githubApiGet(s"/repos/$owner/$repo/tags?per_page=100").flatMap { body =>
+    IO.fromEither(
+      parseJson(body).leftMap(e =>
+        new RuntimeException(s"Failed to parse tags JSON: ${e.getMessage}")
+      )
+    ).map { json =>
+      json.asArray.getOrElse(Vector.empty).toList.flatMap { entry =>
+        for {
+          name <- entry.hcursor.downField("name").as[String].toOption
+          sha <- entry.hcursor
+            .downField("commit")
+            .downField("sha")
+            .as[String]
+            .toOption
+          sv <- name match {
+            case SemverTagPattern(maj, min, pat) =>
+              for {
+                m <- maj.toIntOption
+                n <- min.toIntOption
+                p <- pat.toIntOption
+              } yield (m, n, p)
+            case _ => None
+          }
+        } yield TagInfo(name, sha, sv)
+      }
+    }
+  }
+
+/** Output of GitHub's compare endpoint for the fields we use. */
+case class CompareResult(status: String, aheadBy: Int)
+
+def compareCommits(
+    owner: String,
+    repo: String,
+    base: String,
+    head: String
+)(using Client[IO]): IO[CompareResult] =
+  githubApiGet(s"/repos/$owner/$repo/compare/$base...$head").flatMap { body =>
+    IO.fromEither(
+      parseJson(body).flatMap { json =>
+        val c = json.hcursor
+        for {
+          status <- c.downField("status").as[String]
+          ahead <- c.downField("ahead_by").as[Int]
+        } yield CompareResult(status, ahead)
+      }.leftMap(e =>
+        new RuntimeException(
+          s"Failed to parse compare JSON: ${e.getMessage}"
+        )
+      )
+    )
+  }
+
+/** Format a dynver-style version string. `<latest-reachable-tag>-<ahead>-<short-sha>`
+  * when a tag is reachable from `rev` and we're at least one commit ahead;
+  * the plain tag (no suffix) when `rev` *is* the tag; `0-unstable-<short-sha>`
+  * when no semver tag is reachable.
+  */
+def computeVersion(
+    resolved: ResolvedRepo
+)(using Client[IO]): IO[String] = {
+  val fallback = s"0-unstable-${resolved.shortRev}"
+  listSemverTags(resolved.owner, resolved.repo).flatMap { tags =>
+    // Walk tags newest-semver first; the first one we find that is an ancestor
+    // (status == ahead | identical) wins. This avoids comparing every tag when
+    // the repo's latest is the most likely match.
+    val candidates = tags.sortBy(_.semver)(using Ordering[(Int, Int, Int)].reverse)
+    def firstAncestor(remaining: List[TagInfo]): IO[Option[(TagInfo, CompareResult)]] =
+      remaining match {
+        case Nil => IO.pure(None)
+        case t :: rest =>
+          compareCommits(resolved.owner, resolved.repo, t.sha, resolved.rev)
+            .flatMap {
+              case cmp @ CompareResult("identical" | "ahead", _) =>
+                IO.pure(Some((t, cmp)))
+              case _ =>
+                firstAncestor(rest)
+            }
+      }
+    firstAncestor(candidates).map {
+      case None => fallback
+      case Some((tag, CompareResult("identical", _))) =>
+        tag.name.stripPrefix("v")
+      case Some((tag, CompareResult(_, ahead))) =>
+        s"${tag.name.stripPrefix("v")}-$ahead-${resolved.shortRev}"
+    }
+  }
+}
+
+/** Prefetch the tarball via `nix-prefetch-url --unpack --print-path`, returning
+  * the SRI sha256 and the unpacked store path. We rely on the user's `nix`
+  * command being on PATH — this is true for anyone running `scn` outside the
+  * sandbox.
+  */
+def prefetchTarball(resolved: ResolvedRepo): IO[FetchedRepo] = {
+  val url = resolved.archiveUrl
+  for {
+    _ <- step(s"Fetching tarball ${C.dim}$url${C.reset}...")
+    out <- exec("nix-prefetch-url", "--unpack", "--print-path", url)
+    lines = out.linesIterator.toList.filter(_.nonEmpty)
+    parsed <- lines match {
+      case base32 :: path :: Nil =>
+        for {
+          sri <- exec("nix", "hash", "convert", "--hash-algo", "sha256", base32)
+            .map(_.trim)
+        } yield FetchedRepo(resolved, sri, Path(path))
+      case _ =>
+        IO.raiseError(
+          new RuntimeException(
+            s"nix-prefetch-url returned unexpected output:\n$out"
+          )
+        )
+    }
+  } yield parsed
 }
 
 // --- lock-coords command ---

@@ -33,6 +33,10 @@ When the project sources don't live next to the lockfile (e.g. you want to packa
 
 The lockfile is still written to the *current* working directory — that's where the corresponding `derivation.nix` lives. Paired with `src = fetchFromGitHub { ... };` in the derivation, the lockfile's relative `sources` paths match against the fetched tarball at Nix build time. See `community/scala-monitor` for a worked example.
 
+When positional file paths are passed alongside `--src`, each *relative* path is resolved under `<dir>` rather than under cwd (`scn lock --src /nix/store/xxx-src foo.scala bar.scala` locks just those two files inside the external source root). Absolute positional paths pass through unchanged.
+
+For end-to-end scaffolding from a GitHub URL — prefetch + lock + derivation generation in one command — see `init <github-url>` below; that path uses `--src` semantics internally.
+
 #### Lockfile format (`scala.lock.json`, version 9)
 
 The lockfile uses a multi-target format. Each target (a platform/Scala version combination) has its own section under the `targets` key.
@@ -246,6 +250,21 @@ The generated flake uses the overlay pattern so consumers just do `pkgs.callPack
 #### `--ref`
 
 `init --ref <value>` pins the generated `scala-cli-nix.url`. The value is auto-classified: a 40-char lowercase hex string becomes `?rev=<value>`, anything else becomes `?ref=<value>`. Empty or omitted leaves the URL bare (`github:scala-nix/scala-cli-nix`, floating on default branch). Useful when scaffolding against a feature branch or a known-good rev.
+
+#### Community builds (`init <github-url>`)
+
+A second mode of `init`: pass a GitHub web URL — `https://github.com/<owner>/<repo>` or `https://github.com/<owner>/<repo>/tree/<ref>` — and the CLI scaffolds a community build from upstream sources, without expecting any local files. The flow:
+
+1. **Parse** the URL. `<ref>` can be a branch, tag, or sha; omitting `/tree/<ref>` resolves the repo's default branch.
+2. **Resolve to a sha** via the GitHub API (`/repos/:owner/:repo/commits/:ref`). 40-char hex refs short-circuit the call.
+3. **Compute a dynver-style version**: list semver tags, find the highest one reachable from the resolved sha (via `/compare/<tag>...<rev>`), and format as `<tag>` (identical), `<tag>-<ahead>-<short-sha>` (ahead), or `0-unstable-<short-sha>` (no tag reachable).
+4. **Prefetch the tarball** with `nix-prefetch-url --unpack --print-path` to get an SRI sha256 and the unpacked store path.
+5. **Sanitize the source** if any `.scala` file declares `//> using computeVersion git:dynver` — the GitHub tarball has no `.git`, so scala-cli refuses to evaluate the directive. The lock step uses a writable temp copy with the directive stripped; the generated `derivation.nix` embeds a matching `runCommand` wrapper so the *build* step applies the same patch.
+6. **Lock** the deps via the regular `computeLock` pipeline, with the sanitized path as `sourceRoot` (same code path as `lock --src`).
+7. **Write** `derivation.nix` (callPackage-shaped, uses `fetchFromGitHub`) and `scala.lock.json` to the current directory. No `flake.nix` — community builds plug into the host repo's flake, not their own.
+8. **Print a hint** when the project targets Scala Native: many SN apps need extra native libs at link time (libcurl, libidn2, ...). The hint shows the `attrOverrides` snippet to add them.
+
+Shared HTTP client: GitHub API calls reuse the `Client[IO]` constructed once per CLI invocation in `runIO`, so a single Ember connection pool covers both the version-check workflow and `init <url>`.
 
 ### `scala-cli-nix lock-coords` (coursier-app path)
 
