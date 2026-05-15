@@ -280,6 +280,16 @@ Example with a non-root project:
 
 > **Fork PRs:** the default `github.token` is read-only for PRs from forks, so the push step will be skipped. Contributors from forks need to regenerate the lockfile locally with `nix run github:scala-nix/scala-cli-nix -- lock` and push it themselves.
 
+## Demo deployment
+
+This repo also dogfoods itself: a scala-native http4s server
+([`examples/hello-http4s-native`](examples/hello-http4s-native/)) is built with
+`buildScalaCliApp` and deployed to a Hetzner box defined in
+[`hetzner-nixos/`](hetzner-nixos/). The NixOS config declares the app as a
+plain `systemd.services.hello-http4s` unit fronted by caddy; deploys go via
+deploy-rs (`nix run .#deploy-server01`). Served at
+<https://hello-native.scala-cli-nix.kubukoz.com>.
+
 ## License
 
 Licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
