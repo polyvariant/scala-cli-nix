@@ -96,10 +96,11 @@
         in {
           default = pkgs.scala-cli-nix-cli;
           inherit (pkgs) scala-cli-nix-cli-native-image;
-        } // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
-          # Deploy wrapper consumed by nix-ci (see nix-ci.nix). x86_64-linux
-          # only because nix-ci's runners are linux/amd64 and that's where
-          # the toplevel closure for server01 builds natively.
+        } // {
+          # Deploy wrapper consumed by nix-ci (see nix-ci.nix) and runnable
+          # from any platform. nixos-rebuild itself is cross-platform; the
+          # x86_64-linux closure is produced via the local nix builder
+          # (configure a remote linux builder on non-linux hosts).
           deploy-server01 = pkgs.callPackage ./hetzner-nixos/deploy.nix {
             targetHost = "178.105.118.88";
             hostKey = "178.105.118.88 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII/gUJ/hYY4swoEvQTxw7OAGpj3SQxTm9kg7gk7xOgax";
