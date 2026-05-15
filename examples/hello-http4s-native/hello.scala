@@ -1,5 +1,5 @@
 //> using platform scala-native
-//> using scala 3.6.4
+//> using scala 3.8.3
 //> using dep org.typelevel::cats-effect::3.7.0
 //> using dep org.http4s::http4s-ember-server::0.23.34
 //> using dep org.http4s::http4s-dsl::0.23.34
