@@ -3,9 +3,11 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     disko.url = "github:nix-community/disko";
     disko.inputs.nixpkgs.follows = "nixpkgs";
+    deploy-rs.url = "github:serokell/deploy-rs";
+    deploy-rs.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, disko, ... }:
+  outputs = { self, nixpkgs, disko, deploy-rs, ... }:
     let
       forAllSystems = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" ];
     in {
@@ -15,6 +17,9 @@
         system = "x86_64-linux";
         modules = [
           disko.nixosModules.disko
+          # Make `pkgs.scala-cli-nix` available in configuration.nix so it can
+          # callPackage example derivations directly.
+          { nixpkgs.overlays = [ self.overlays.default ]; }
           ./hetzner-nixos/configuration.nix
         ];
       };
@@ -96,18 +101,29 @@
         in {
           default = pkgs.scala-cli-nix-cli;
           inherit (pkgs) scala-cli-nix-cli-native-image;
-        } // {
-          # Deploy wrapper consumed by nix-ci (see nix-ci.nix) and runnable
-          # from any platform. nixos-rebuild itself is cross-platform; the
-          # x86_64-linux closure is produced via the local nix builder
-          # (configure a remote linux builder on non-linux hosts).
-          deploy-server01 = pkgs.callPackage ./hetzner-nixos/deploy.nix {
-            targetHost = "178.105.118.88";
+          # The wrapper is a plain shell script around the `deploy` binary,
+          # which deploy-rs ships for every supported system. Exposing it
+          # per-system lets `nix run .#deploy-server01` work from darwin too;
+          # deploy-rs builds the linux closure (system profile + each app
+          # profile) via the local store / configured remote builder.
+          deploy-server01 = pkgs.callPackage ./hetzner-nixos/deploy-server01.nix {
+            deploy-rs = deploy-rs.packages.${system}.default;
             hostKey = "178.105.118.88 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII/gUJ/hYY4swoEvQTxw7OAGpj3SQxTm9kg7gk7xOgax";
-            systemPath = self.nixosConfigurations.server01.config.system.build.toplevel;
           };
         }
       );
+
+      # deploy-rs configuration. Single `system` profile — the NixOS toplevel
+      # owns all services and binaries (including hello-http4s declared in
+      # configuration.nix). `activate.nixos` runs switch-to-configuration on
+      # the target, which restarts changed units.
+      deploy.nodes.server01 = {
+        hostname = "178.105.118.88";
+        sshUser = "root";
+        user = "root";
+        profiles.system.path = deploy-rs.lib.x86_64-linux.activate.nixos
+          self.nixosConfigurations.server01;
+      };
 
       devShells = forAllSystems (system:
         let
@@ -122,6 +138,7 @@
               # all-in-one module.
               (pkgs.opentofu.withPlugins (p: [ p.hcloud p.external p.null ]))
               pkgs.nixos-anywhere
+              deploy-rs.packages.${system}.default
             ];
           };
         }
@@ -142,6 +159,7 @@
           example-scala2 = pkgs.callPackage ./examples/scala2/derivation.nix { };
           example-scala-native = pkgs.callPackage ./examples/scala-native/derivation.nix { };
           example-scala-native-ce = pkgs.callPackage ./examples/scala-native-ce/derivation.nix { };
+          example-hello-http4s-native = pkgs.callPackage ./examples/hello-http4s-native/derivation.nix { };
           example-scala-native-ce-cross = pkgs.callPackage ./examples/scala-native-ce-cross/derivation.nix { };
           example-scala-resources = pkgs.callPackage ./examples/scala-resources/derivation.nix { };
           example-scala3-native-image = pkgs.callPackage ./examples/scala3-native-image/derivation.nix { };
@@ -218,7 +236,7 @@
           # server first, CLI second) but still exits 0; scalafmt prints
           # "scalafmt <version>"; smithy4s' bare invocation prints a
           # Decline usage banner we grep for.
-          inherit example-metals example-scalafmt example-smithy4s;
+          inherit example-metals example-scalafmt example-smithy4s example-hello-http4s-native;
           example-metals-test = pkgs.runCommand "check-example-metals" { } ''
             ${example-metals}/bin/metals --help > /dev/null
             echo "OK: metals --help launched"

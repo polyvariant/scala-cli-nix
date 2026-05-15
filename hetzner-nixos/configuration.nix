@@ -4,8 +4,34 @@
   pkgs,
   ...
 }:
+let
+  hello-http4s-native = pkgs.callPackage ../examples/hello-http4s-native/derivation.nix { };
+in
 {
-  imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
+  imports = [
+    (modulesPath + "/profiles/qemu-guest.nix")
+  ];
+
+  systemd.services.hello-http4s = {
+    description = "hello-http4s native http4s server";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network.target" ];
+    serviceConfig = {
+      ExecStart = lib.getExe hello-http4s-native;
+      Restart = "on-failure";
+      RestartSec = "10s";
+      DynamicUser = true;
+    };
+  };
+
+  services.caddy = {
+    enable = true;
+    virtualHosts."hello-native.scala-cli-nix.kubukoz.com".extraConfig = ''
+      reverse_proxy 127.0.0.1:8080
+    '';
+  };
+
+  networking.firewall.allowedTCPPorts = [ 80 443 ];
 
   # Hetzner cloud cx-series boots in BIOS mode (not UEFI). Disko needs a
   # 1MiB bios_grub partition for GRUB's stage 1.5 to live in on a GPT disk,
