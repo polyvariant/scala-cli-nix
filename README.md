@@ -287,13 +287,15 @@ Example with a non-root project:
 
 ## Demo deployment
 
-This repo also dogfoods itself: a scala-native http4s server
-([`examples/hello-http4s-native`](examples/hello-http4s-native/)) is built with
-`buildScalaCliApp` and deployed to a Hetzner box defined in
-[`hetzner-nixos/`](hetzner-nixos/). The NixOS config declares the app as a
-plain `systemd.services.hello-http4s` unit fronted by caddy; deploys go via
-deploy-rs (`nix run .#deploy-server01`). Served at
-<https://hello-native.scala-cli-nix.kubukoz.com>.
+This repo also dogfoods itself: a cross JVM+Native http4s server
+([`examples/hello-http4s`](examples/hello-http4s/)) is built with
+`buildScalaCliApps` and deployed to a Hetzner box defined in
+[`hetzner-nixos/`](hetzner-nixos/). The NixOS config runs both targets side by
+side as `systemd.services.hello-http4s-native` (port 8080) and
+`systemd.services.hello-http4s-jvm` (port 8081), each fronted by caddy on its
+own subdomain. Deploys go via deploy-rs (`nix run .#deploy-server01`). Served
+at <https://hello-native.scala-cli-nix.kubukoz.com> and
+<https://hello-jvm.scala-cli-nix.kubukoz.com>.
 
 ## License
 

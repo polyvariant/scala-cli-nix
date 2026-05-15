@@ -8,7 +8,7 @@
 #     nix run .#deploy-server01
 #
 # Optional first argument scopes the deploy to a single profile, e.g.
-# `nix run .#deploy-server01 -- .#server01.system` or `-- .#server01.hello-http4s`.
+# `nix run .#deploy-server01 -- .#server01.system`.
 # With no args, deploy-rs ships every profile in the node.
 writeShellApplication {
   name = "deploy-server01";

@@ -5,29 +5,39 @@
   ...
 }:
 let
-  hello-http4s-native = pkgs.callPackage ../examples/hello-http4s-native/derivation.nix { };
+  hello-http4s = pkgs.callPackage ../examples/hello-http4s/derivation.nix { };
+
+  mkHelloHttp4sService = { platform, port }: {
+    description = "hello-http4s ${platform} http4s server";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network.target" ];
+    environment = {
+      PLATFORM = platform;
+      PORT = toString port;
+    };
+    serviceConfig = {
+      ExecStart = lib.getExe hello-http4s.${platform};
+      Restart = "on-failure";
+      RestartSec = "10s";
+      DynamicUser = true;
+    };
+  };
 in
 {
   imports = [
     (modulesPath + "/profiles/qemu-guest.nix")
   ];
 
-  systemd.services.hello-http4s = {
-    description = "hello-http4s native http4s server";
-    wantedBy = [ "multi-user.target" ];
-    after = [ "network.target" ];
-    serviceConfig = {
-      ExecStart = lib.getExe hello-http4s-native;
-      Restart = "on-failure";
-      RestartSec = "10s";
-      DynamicUser = true;
-    };
-  };
+  systemd.services.hello-http4s-native = mkHelloHttp4sService { platform = "native"; port = 8080; };
+  systemd.services.hello-http4s-jvm = mkHelloHttp4sService { platform = "jvm"; port = 8081; };
 
   services.caddy = {
     enable = true;
     virtualHosts."hello-native.scala-cli-nix.kubukoz.com".extraConfig = ''
       reverse_proxy 127.0.0.1:8080
+    '';
+    virtualHosts."hello-jvm.scala-cli-nix.kubukoz.com".extraConfig = ''
+      reverse_proxy 127.0.0.1:8081
     '';
   };
 

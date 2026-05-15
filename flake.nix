@@ -114,9 +114,9 @@
       );
 
       # deploy-rs configuration. Single `system` profile — the NixOS toplevel
-      # owns all services and binaries (including hello-http4s declared in
-      # configuration.nix). `activate.nixos` runs switch-to-configuration on
-      # the target, which restarts changed units.
+      # owns all services and binaries (including hello-http4s-native and
+      # hello-http4s-jvm declared in configuration.nix). `activate.nixos` runs
+      # switch-to-configuration on the target, which restarts changed units.
       deploy.nodes.server01 = {
         hostname = "178.105.118.88";
         sshUser = "root";
@@ -159,7 +159,7 @@
           example-scala2 = pkgs.callPackage ./examples/scala2/derivation.nix { };
           example-scala-native = pkgs.callPackage ./examples/scala-native/derivation.nix { };
           example-scala-native-ce = pkgs.callPackage ./examples/scala-native-ce/derivation.nix { };
-          example-hello-http4s-native = pkgs.callPackage ./examples/hello-http4s-native/derivation.nix { };
+          example-hello-http4s = pkgs.callPackage ./examples/hello-http4s/derivation.nix { };
           example-scala-native-ce-cross = pkgs.callPackage ./examples/scala-native-ce-cross/derivation.nix { };
           example-scala-resources = pkgs.callPackage ./examples/scala-resources/derivation.nix { };
           example-scala3-native-image = pkgs.callPackage ./examples/scala3-native-image/derivation.nix { };
@@ -236,7 +236,9 @@
           # server first, CLI second) but still exits 0; scalafmt prints
           # "scalafmt <version>"; smithy4s' bare invocation prints a
           # Decline usage banner we grep for.
-          inherit example-metals example-scalafmt example-smithy4s example-hello-http4s-native;
+          inherit example-metals example-scalafmt example-smithy4s;
+          example-hello-http4s-jvm = example-hello-http4s.jvm;
+          example-hello-http4s-native = example-hello-http4s.native;
           example-metals-test = pkgs.runCommand "check-example-metals" { } ''
             ${example-metals}/bin/metals --help > /dev/null
             echo "OK: metals --help launched"
