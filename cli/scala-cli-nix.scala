@@ -1487,7 +1487,7 @@ private def doInit(
 /** GitHub-URL flavoured `init`. Resolves the URL to a pinned commit + tarball,
   * writes a fetchFromGitHub-shaped `derivation.nix` next to a freshly-locked
   * `scala.lock.json`. Unlike the local `doInit`, this path doesn't scaffold a
-  * `flake.nix` — community builds live inside the host repo's flake, not
+  * `flake.nix` — external builds live inside the host repo's flake, not
   * standalone. We print a hint for Scala-Native projects that may need
   * `attrOverrides`-supplied native libs (libcurl, etc.).
   */
@@ -1555,9 +1555,9 @@ private def doInitFromGitHub(
   } yield ExitCode.Success
 }
 
-/** Render the community-build `derivation.nix`. Single-target shape: the
+/** Render the external-build `derivation.nix`. Single-target shape: the
   * `target =` arg of `buildScalaCliApp` is omitted because we expect one
-  * target per community build (multi-target projects can switch to
+  * target per external build (multi-target projects can switch to
   * `buildScalaCliApps`, but that's a manual edit and rare for upstreams that
   * don't already package themselves).
   */

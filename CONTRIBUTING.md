@@ -26,12 +26,12 @@ For `lock-coords` (no scala-cli source files, so no `resolvers[]`), pass extra r
 
 #### Locking external sources (`lock --src <dir>`)
 
-When the project sources don't live next to the lockfile (e.g. you want to package an upstream repo as a community build, sourcing it via `fetchFromGitHub`), pass `--src <dir>` to `lock`. The CLI then:
+When the project sources don't live next to the lockfile (e.g. you want to package an upstream repo as an external build, sourcing it via `fetchFromGitHub`), pass `--src <dir>` to `lock`. The CLI then:
 
 1. Runs `scala-cli list-targets`/`export` with `<dir>` as the input.
 2. Strips `<dir>` (the *source root*) from absolute source paths before writing them to the lockfile, so the recorded paths are relative to `<dir>` rather than to cwd.
 
-The lockfile is still written to the *current* working directory — that's where the corresponding `derivation.nix` lives. Paired with `src = fetchFromGitHub { ... };` in the derivation, the lockfile's relative `sources` paths match against the fetched tarball at Nix build time. See `community/scala-monitor` for a worked example.
+The lockfile is still written to the *current* working directory — that's where the corresponding `derivation.nix` lives. Paired with `src = fetchFromGitHub { ... };` in the derivation, the lockfile's relative `sources` paths match against the fetched tarball at Nix build time. See `external/scala-monitor` for a worked example.
 
 When positional file paths are passed alongside `--src`, each *relative* path is resolved under `<dir>` rather than under cwd (`scn lock --src /nix/store/xxx-src foo.scala bar.scala` locks just those two files inside the external source root). Absolute positional paths pass through unchanged.
 
@@ -251,9 +251,9 @@ The generated flake uses the overlay pattern so consumers just do `pkgs.callPack
 
 `init --ref <value>` pins the generated `scala-cli-nix.url`. The value is auto-classified: a 40-char lowercase hex string becomes `?rev=<value>`, anything else becomes `?ref=<value>`. Empty or omitted leaves the URL bare (`github:scala-nix/scala-cli-nix`, floating on default branch). Useful when scaffolding against a feature branch or a known-good rev.
 
-#### Community builds (`init <github-url>`)
+#### External builds (`init <github-url>`)
 
-A second mode of `init`: pass a GitHub web URL — `https://github.com/<owner>/<repo>` or `https://github.com/<owner>/<repo>/tree/<ref>` — and the CLI scaffolds a community build from upstream sources, without expecting any local files. The flow:
+A second mode of `init`: pass a GitHub web URL — `https://github.com/<owner>/<repo>` or `https://github.com/<owner>/<repo>/tree/<ref>` — and the CLI scaffolds an external build from upstream sources, without expecting any local files. The flow:
 
 1. **Parse** the URL. `<ref>` can be a branch, tag, or sha; omitting `/tree/<ref>` resolves the repo's default branch.
 2. **Resolve to a sha** via the GitHub API (`/repos/:owner/:repo/commits/:ref`). 40-char hex refs short-circuit the call.
@@ -261,7 +261,7 @@ A second mode of `init`: pass a GitHub web URL — `https://github.com/<owner>/<
 4. **Prefetch the tarball** with `nix-prefetch-url --unpack --print-path` to get an SRI sha256 and the unpacked store path.
 5. **Sanitize the source** if any `.scala` file declares `//> using computeVersion git:dynver` — the GitHub tarball has no `.git`, so scala-cli refuses to evaluate the directive. The lock step uses a writable temp copy with the directive stripped; the generated `derivation.nix` embeds a matching `runCommand` wrapper so the *build* step applies the same patch.
 6. **Lock** the deps via the regular `computeLock` pipeline, with the sanitized path as `sourceRoot` (same code path as `lock --src`).
-7. **Write** `derivation.nix` (callPackage-shaped, uses `fetchFromGitHub`) and `scala.lock.json` to the current directory. No `flake.nix` — community builds plug into the host repo's flake, not their own.
+7. **Write** `derivation.nix` (callPackage-shaped, uses `fetchFromGitHub`) and `scala.lock.json` to the current directory. No `flake.nix` — external builds plug into the host repo's flake, not their own.
 8. **Print a hint** when the project targets Scala Native: many SN apps need extra native libs at link time (libcurl, libidn2, ...). The hint shows the `attrOverrides` snippet to add them.
 
 Shared HTTP client: GitHub API calls reuse the `Client[IO]` constructed once per CLI invocation in `runIO`, so a single Ember connection pool covers both the version-check workflow and `init <url>`.
