@@ -124,7 +124,12 @@ let
     let
       mainAndTestSources = sources ++ fetched.test.sources;
       mainAndTestResourceDirs = resourceDirs ++ fetched.test.resourceDirs;
-      inherit (prepareSources mainAndTestSources mainAndTestResourceDirs src) sourceArgs;
+      # Pass the filtered project tree (not enumerated files) so scala-cli's
+      # directory-based scope heuristics fire — sources under a `test/` dir get
+      # classified as test scope, just like `.test.scala`-suffixed files.
+      # Enumerating files puts everything in main scope and test deps go
+      # missing at compile time.
+      inherit (prepareSources mainAndTestSources mainAndTestResourceDirs src) filteredSrc;
       # scala-cli runs separate Coursier resolutions for the main and test
       # scopes; if the test framework pulls a transitive version that wins over
       # what the main scope picks, the two resolutions disagree and each scope
@@ -137,8 +142,14 @@ let
       dontUnpack = true;
       buildInputs = [ scala-cli openjdk ];
       COURSIER_CACHE = depsCache;
+      # Run from a writable copy of the project tree so tests that read
+      # cwd-relative files (e.g. `Source.fromFile("test/foo.txt")`) resolve
+      # the same way they do when run from a normal working checkout.
       buildPhase = scalaCliEnvSetup + ''
-        scala-cli --power test ${sourceArgs} --server=false --offline \
+        cp -r ${filteredSrc} $TMPDIR/proj
+        chmod -R u+w $TMPDIR/proj
+        cd $TMPDIR/proj
+        scala-cli --power test . --server=false --offline \
           ${platformArgs fetched} \
           --scala-version ${fetched.scalaVersion}
       '';
@@ -152,7 +163,8 @@ let
     let
       mainAndTestSources = sources ++ fetched.test.sources;
       mainAndTestResourceDirs = resourceDirs ++ fetched.test.resourceDirs;
-      inherit (prepareSources mainAndTestSources mainAndTestResourceDirs src) sourceArgs;
+      # See buildJvmTest for why we pass the project tree, not file args.
+      inherit (prepareSources mainAndTestSources mainAndTestResourceDirs src) filteredSrc;
       # scala-cli runs separate Coursier resolutions for the main and test
       # scopes; if the test framework pulls a transitive version that wins over
       # what the main scope picks (e.g. munit 1.3.0 → javalib_native 0.5.11
@@ -167,8 +179,12 @@ let
       dontUnpack = true;
       buildInputs = [ scala-cli openjdk clang which ];
       COURSIER_CACHE = depsCache;
+      # See buildJvmTest for why we run from a writable copy of the tree.
       buildPhase = scalaCliEnvSetup + ''
-        scala-cli --power test ${sourceArgs} --server=false --offline \
+        cp -r ${filteredSrc} $TMPDIR/proj
+        chmod -R u+w $TMPDIR/proj
+        cd $TMPDIR/proj
+        scala-cli --power test . --server=false --offline \
           ${platformArgs fetched} \
           --scala-version ${fetched.scalaVersion}
       '';

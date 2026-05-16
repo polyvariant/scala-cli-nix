@@ -156,6 +156,8 @@ The lock script reconstructs URLs by stripping the cache prefix and re-adding `:
 
 Each derivation returned by `buildScalaCliApp(s)` carries `passthru.tests` — an attrset (currently `{ test = <drv>; }`) of test-runner derivations. The test derivation runs `scala-cli test --offline --server=false` against the project's test sources using a deps cache built from both `libraryDependencies` (main scope) and `test.libraryDependencies` (test scope) — scala-cli runs separate resolutions for each scope and the cache must satisfy both. Tests are skipped (the attrset is empty) when the lockfile has no `test` section for that target. The `init` command's generated flake wires every package's `passthru.tests` into `checks` via `collectChecks` so `nix flake check` runs them; users with an existing `flake.nix` get the same one-liner in the printed instructions.
 
+Test invocation passes the filtered project tree as a single directory argument (not as enumerated source files). This matters because scala-cli classifies source scope from path layout — files under a `test/` subdir, or files with the `.test.scala` suffix, land in the test scope. Enumerating files puts everything in the main scope, hiding the test deps from compilation. The test phase also copies the tree into `$TMPDIR` and `cd`s there before invoking scala-cli, so cwd matches the project root for tests that read fixture files via cwd-relative paths (e.g. `Source.fromFile("test/foo.txt")`).
+
 The `mainClass` parameter (JVM only) is only needed when the project has multiple main classes — otherwise it is discovered automatically at build time.
 
 Both functions pass `--platform` and `--scala-version` flags to `scala-cli package` so that multi-platform sources are compiled for the correct target.

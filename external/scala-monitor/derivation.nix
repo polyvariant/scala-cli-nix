@@ -3,10 +3,17 @@
 scala-cli-nix.buildScalaCliApp {
   pname = "scala-monitor";
   version = "0.5.6";
-  # The upstream `project.scala` declares `//> using computeVersion git:dynver`,
-  # which scala-cli refuses to evaluate without a real .git directory. Strip
-  # it so the build matches what `scn init` saw at lock time (BuildInfo falls
-  # back to `projectVersion = None`).
+  # Two upstream patches:
+  #   1. `//> using computeVersion git:dynver` — scala-cli refuses to evaluate
+  #      this without a real .git directory. Strip it so the build matches
+  #      what `scn init` saw at lock time (BuildInfo falls back to
+  #      `projectVersion = None`).
+  #   2. PsOutputParsingSuite reads `test/ps-output.txt` and
+  #      `test/ps-output-sbt-user.txt` via cwd-relative `Source.fromFile`,
+  #      not as classpath resources. Declaring `test` as a test resourceDir
+  #      makes our source filter keep the whole `test/` subtree (including
+  #      `.txt` fixtures), and scala-cli runs tests with cwd = project root
+  #      so the relative paths resolve.
   src =
     let
       raw = fetchFromGitHub {
@@ -19,6 +26,7 @@ scala-cli-nix.buildScalaCliApp {
       cp -r ${raw} $out
       chmod -R u+w $out
       find $out -name '*.scala' -exec sed -i '/^\/\/> using computeVersion git:dynver$/d' {} +
+      echo '//> using test.resourceDir test' >> $out/project.scala
     '';
   lockFile = ./scala.lock.json;
 
