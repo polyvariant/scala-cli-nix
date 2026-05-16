@@ -277,6 +277,7 @@
               *) echo "FAIL: unexpected scala-monitor --help output:"; echo "$output"; exit 1 ;;
             esac
           '';
+          external-scala-monitor-test-scope = external-scala-monitor.passthru.tests.test;
         } // (
           # Cross JVM+Native test-framework examples. Each framework gets its
           # own example built for both platforms; for every (framework,
