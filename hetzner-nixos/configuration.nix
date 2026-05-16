@@ -62,6 +62,11 @@ in
   networking.hostName = "server01";
   networking.useDHCP = lib.mkDefault true;
 
+  nix.settings.experimental-features = [
+    "nix-command"
+    "flakes"
+  ];
+
   services.openssh.enable = true;
   services.openssh.settings.PasswordAuthentication = false;
   services.openssh.settings.PermitRootLogin = "prohibit-password";
